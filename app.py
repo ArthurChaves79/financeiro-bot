@@ -16,8 +16,13 @@ Talisman(app)  # Força HTTPS e headers de segurança
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Configuração Twilio
+<<<<<<< HEAD
+TWILIO_ACCOUNT_SID = os.environ.get('AC648e73ca8dd0835e7e935940382e54b6')
+TWILIO_AUTH_TOKEN = os.environ.get('[AuthToken]')
+=======
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
+>>>>>>> 42f23e9f7af9adb9dbc7c5f5fde0f802de3d8a25
 
 # Modelo de NLP para classificação
 nlp = pipeline('text-classification', model='neuralmind/bert-base-portuguese-cased')

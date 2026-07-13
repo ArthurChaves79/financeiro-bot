@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Meu Financeiro</title>
+<meta name="description" content="Controle financeiro pessoal simples, offline e privado" />
+<meta name="theme-color" content="#0b1e19" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Financeiro" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+      <circle cx="24" cy="24" r="19" fill="var(--coin)" stroke="var(--gold)" stroke-width="2"/>
+      <path d="M24 14v20M18 18h9a3 3 0 0 1 0 6h-6a3 3 0 0 0 0 6h9" stroke="var(--coin-ink)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="brand-text">
+      <h1>Meu Financeiro</h1>
+      <p class="tagline">seus dados ficam só no seu celular</p>
+    </div>
+  </div>
+  <button id="settings-btn" class="icon-btn" aria-label="Backup e configurações" title="Backup e configurações">⚙</button>
+</header>
+
+<section class="balance-card">
+  <span class="balance-label">Saldo atual</span>
+  <span id="balance-value" class="balance-value">R$ 0,00</span>
+</section>
+
+<nav class="tabs" role="tablist" aria-label="Seções">
+  <button class="tab active" data-view="extrato" role="tab" aria-selected="true">Extrato</button>
+  <button class="tab" data-view="orcamentos" role="tab" aria-selected="false">Orçamentos</button>
+  <button class="tab" data-view="relatorio" role="tab" aria-selected="false">Relatório</button>
+</nav>
+
+<main>
+  <section id="view-extrato" class="view active">
+    <div id="extrato-empty" class="empty-state" hidden>
+      <p>Nenhuma transação ainda.</p>
+      <button id="empty-add-btn" class="primary-btn">Adicionar a primeira</button>
+    </div>
+    <ul id="transacao-list" class="transacao-list"></ul>
+  </section>
+
+  <section id="view-orcamentos" class="view">
+    <div id="orcamentos-empty" class="empty-state" hidden>
+      <p>Nenhum orçamento definido.</p>
+      <button id="empty-orcamento-btn" class="primary-btn">Definir orçamento</button>
+    </div>
+    <ul id="orcamento-list" class="orcamento-list"></ul>
+    <button id="add-orcamento-btn" class="secondary-btn full-width">+ Novo orçamento</button>
+  </section>
+
+  <section id="view-relatorio" class="view">
+    <div class="month-nav">
+      <button id="prev-month-btn" class="icon-btn" aria-label="Mês anterior">‹</button>
+      <span id="month-label" class="month-label"></span>
+      <button id="next-month-btn" class="icon-btn" aria-label="Próximo mês">›</button>
+    </div>
+    <div id="relatorio-empty" class="empty-state" hidden>
+      <p>Sem despesas neste mês.</p>
+    </div>
+    <div id="relatorio-content">
+      <canvas id="relatorio-chart" width="280" height="280"></canvas>
+      <ul id="relatorio-legend" class="relatorio-legend"></ul>
+    </div>
+  </section>
+</main>
+
+<button id="add-btn" class="fab" aria-label="Nova transação" title="Nova transação">+</button>
+
+<dialog id="transacao-dialog">
+  <form id="transacao-form" method="dialog">
+    <h2 id="transacao-dialog-title">Nova transação</h2>
+
+    <div class="tipo-toggle" id="tipo-toggle" data-value="saida">
+      <button type="button" class="tipo-btn" data-value="saida">Despesa</button>
+      <button type="button" class="tipo-btn" data-value="entrada">Receita</button>
+    </div>
+
+    <label class="field">
+      <span>Valor (R$)</span>
+      <input type="number" id="valor" name="valor" min="0.01" step="0.01" inputmode="decimal" required />
+    </label>
+
+    <label class="field">
+      <span>Categoria</span>
+      <input type="text" id="categoria" name="categoria" list="categoria-options" required autocomplete="off" />
+      <datalist id="categoria-options">
+        <option value="Alimentação"></option>
+        <option value="Transporte"></option>
+        <option value="Moradia"></option>
+        <option value="Lazer"></option>
+        <option value="Saúde"></option>
+        <option value="Educação"></option>
+        <option value="Salário"></option>
+        <option value="Outros"></option>
+      </datalist>
+    </label>
+
+    <label class="field">
+      <span>Descrição</span>
+      <input type="text" id="descricao" name="descricao" autocomplete="off" placeholder="Opcional" />
+    </label>
+
+    <label class="field">
+      <span>Data</span>
+      <input type="date" id="data" name="data" required />
+    </label>
+
+    <input type="hidden" id="transacao-id" name="id" />
+
+    <div class="dialog-actions">
+      <button type="button" id="transacao-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="button" id="transacao-delete-btn" class="danger-btn" hidden>Excluir</button>
+      <button type="submit" id="transacao-save-btn" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="orcamento-dialog">
+  <form id="orcamento-form" method="dialog">
+    <h2 id="orcamento-dialog-title">Novo orçamento</h2>
+
+    <label class="field">
+      <span>Categoria</span>
+      <input type="text" id="orcamento-categoria" name="categoria" list="categoria-options" required autocomplete="off" />
+    </label>
+
+    <label class="field">
+      <span>Limite mensal (R$)</span>
+      <input type="number" id="orcamento-limite" name="limite" min="0.01" step="0.01" inputmode="decimal" required />
+    </label>
+
+    <input type="hidden" id="orcamento-original-categoria" name="original" />
+
+    <div class="dialog-actions">
+      <button type="button" id="orcamento-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="button" id="orcamento-delete-btn" class="danger-btn" hidden>Excluir</button>
+      <button type="submit" id="orcamento-save-btn" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog">
+  <form method="dialog" class="settings-form">
+    <h2>Backup e configurações</h2>
+    <p class="settings-hint">Seus dados ficam salvos apenas neste celular. Faça backup regularmente para não perder tudo caso troque ou perca o aparelho.</p>
+
+    <button type="button" id="export-btn" class="primary-btn full-width">Exportar backup (.json)</button>
+
+    <label class="field">
+      <span>Importar backup</span>
+      <input type="file" id="import-input" accept="application/json,.json" />
+    </label>
+    <p id="import-status" class="import-status" hidden></p>
+
+    <hr class="settings-divider" />
+
+    <button type="button" id="wipe-btn" class="danger-btn full-width">Apagar todos os dados</button>
+
+    <div class="dialog-actions">
+      <button type="button" id="settings-close-btn" class="ghost-btn">Fechar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

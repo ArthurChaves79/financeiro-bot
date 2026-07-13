@@ -51,6 +51,18 @@ def criar_tabelas():
         limite NUMERIC
     )''')
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS livros (
+        id SERIAL PRIMARY KEY,
+        usuario VARCHAR(20),
+        titulo VARCHAR(200),
+        autor VARCHAR(200) DEFAULT 'Desconhecido',
+        status VARCHAR(20) DEFAULT 'quero ler',
+        avaliacao INTEGER,
+        data_adicionado TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        data_lido TIMESTAMP
+    )''')
+
     conn.commit()
     conn.close()
 
@@ -62,7 +74,19 @@ def processar_mensagem(texto, telefone):
         # Classificação com NLP
         classe = nlp(texto)[0]['label']
         
-        if 'saldo' in texto:
+        if texto.startswith('livro adicionar'):
+            return adicionar_livro(texto, telefone)
+        elif texto.startswith('livro lendo'):
+            return atualizar_status_livro(texto, telefone, 'lendo')
+        elif texto.startswith('livro lido'):
+            return atualizar_status_livro(texto, telefone, 'lido')
+        elif texto.startswith('livro nota'):
+            return avaliar_livro(texto, telefone)
+        elif texto.startswith('livro remover'):
+            return remover_livro(texto, telefone)
+        elif texto in ('livros', 'meus livros'):
+            return listar_livros(telefone)
+        elif 'saldo' in texto:
             return consultar_saldo(telefone)
         elif 'adicionar' in texto:
             return registrar_transacao(texto, telefone)
@@ -73,7 +97,8 @@ def processar_mensagem(texto, telefone):
         elif 'investir' in texto:
             return sugerir_investimento(telefone)
         else:
-            return "Comando não reconhecido. Tente: saldo, adicionar, relatório, orçamento"
+            return ("Comando não reconhecido. Tente: saldo, adicionar, relatório, orçamento, "
+                     "livros, livro adicionar, livro lendo, livro lido, livro nota, livro remover")
             
     except Exception as e:
         return f"Erro: {str(e)}"
@@ -147,6 +172,118 @@ def definir_orcamento(texto):
     conn.commit()
     conn.close()
     return f"Orçamento para {categoria} definido em R$ {limite:.2f}"
+
+def adicionar_livro(texto, telefone):
+    conteudo = texto.replace('livro adicionar', '', 1).strip()
+    if not conteudo:
+        return "Use: livro adicionar Título / Autor"
+
+    if '/' in conteudo:
+        titulo, autor = conteudo.split('/', 1)
+        titulo, autor = titulo.strip(), autor.strip()
+    else:
+        titulo, autor = conteudo, 'Desconhecido'
+
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO livros (usuario, titulo, autor)
+        VALUES (%s, %s, %s)
+    ''', (telefone, titulo, autor))
+    conn.commit()
+    conn.close()
+    return f'Livro adicionado: "{titulo}" de {autor}. Status: quero ler'
+
+def listar_livros(telefone):
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT titulo, autor, status, avaliacao
+        FROM livros
+        WHERE usuario = %s
+        ORDER BY status, titulo
+    ''', (telefone,))
+    livros = cursor.fetchall()
+    conn.close()
+
+    if not livros:
+        return "Você ainda não tem livros cadastrados. Envie: livro adicionar Título / Autor"
+
+    linhas = ["Seus livros:"]
+    for titulo, autor, status, avaliacao in livros:
+        nota = f" (nota: {avaliacao})" if avaliacao else ""
+        linhas.append(f"- {titulo} ({autor}) — {status}{nota}")
+    return "\n".join(linhas)
+
+def atualizar_status_livro(texto, telefone, status):
+    titulo = texto.replace(f'livro {status}', '', 1).strip()
+    if not titulo:
+        return f"Use: livro {status} Título"
+
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE livros
+        SET status = %s,
+            data_lido = CASE WHEN %s = 'lido' THEN CURRENT_TIMESTAMP ELSE data_lido END
+        WHERE usuario = %s AND titulo ILIKE %s
+    ''', (status, status, telefone, titulo))
+    encontrado = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+
+    if not encontrado:
+        return f'Livro "{titulo}" não encontrado na sua lista.'
+    return f'Livro "{titulo}" marcado como "{status}".'
+
+def avaliar_livro(texto, telefone):
+    conteudo = texto.replace('livro nota', '', 1).strip()
+    if '/' not in conteudo:
+        return "Use: livro nota Título / Nota (1 a 5)"
+
+    titulo, nota_str = conteudo.split('/', 1)
+    titulo, nota_str = titulo.strip(), nota_str.strip()
+
+    try:
+        nota = int(nota_str)
+    except ValueError:
+        return "A nota deve ser um número de 1 a 5."
+    if nota < 1 or nota > 5:
+        return "A nota deve ser um número de 1 a 5."
+
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE livros
+        SET avaliacao = %s
+        WHERE usuario = %s AND titulo ILIKE %s
+    ''', (nota, telefone, titulo))
+    encontrado = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+
+    if not encontrado:
+        return f'Livro "{titulo}" não encontrado na sua lista.'
+    return f'Nota {nota} registrada para "{titulo}".'
+
+def remover_livro(texto, telefone):
+    titulo = texto.replace('livro remover', '', 1).strip()
+    if not titulo:
+        return "Use: livro remover Título"
+
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    cursor = conn.cursor()
+    cursor.execute('''
+        DELETE FROM livros
+        WHERE usuario = %s AND titulo ILIKE %s
+    ''', (telefone, titulo))
+    encontrado = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+
+    if not encontrado:
+        return f'Livro "{titulo}" não encontrado na sua lista.'
+    return f'Livro "{titulo}" removido da sua lista.'
 
 def sugerir_investimento(telefone):
     conn = psycopg2.connect(DATABASE_URL, sslmode='require')

@@ -9,6 +9,7 @@
     search: (q) => `/api/search?q=${encodeURIComponent(q)}`,
     layers: "/api/layers",
     layer: (id) => `/api/layers/${encodeURIComponent(id)}`,
+    settings: "/api/settings",
   };
 
   const state = {
@@ -33,6 +34,7 @@
       await loadLayersPanel();
     });
     setupSearch();
+    setupSettings();
   }
 
   function createMap(config) {
@@ -230,6 +232,76 @@
         .setLngLat([result.lon, result.lat])
         .setPopup(new maplibregl.Popup().setHTML(`<div class="sigview-popup"><h3>${escapeHtml(result.label)}</h3></div>`))
         .addTo(state.map);
+    }
+  }
+
+  // ---- Configurações -----------------------------------------------------
+
+  function setupSettings() {
+    const btn = document.getElementById("settings-btn");
+    const overlay = document.getElementById("settings-overlay");
+    const cancelBtn = document.getElementById("settings-cancel");
+    const saveBtn = document.getElementById("settings-save");
+    const errorEl = document.getElementById("settings-error");
+
+    const fields = {
+      layers_dir: document.getElementById("cfg-layers-dir"),
+      geocoder_db: document.getElementById("cfg-geocoder-db"),
+      tile_source_url: document.getElementById("cfg-tile-url"),
+      tile_source_type: document.getElementById("cfg-tile-type"),
+    };
+
+    btn.addEventListener("click", async () => {
+      errorEl.hidden = true;
+      try {
+        const current = await fetchJSON(API.settings);
+        for (const [key, el] of Object.entries(fields)) {
+          if (current[key] != null) el.value = current[key];
+        }
+      } catch (err) {
+        showError(`Não foi possível carregar as configurações atuais: ${err.message}`);
+      }
+      overlay.hidden = false;
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      overlay.hidden = true;
+    });
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.hidden = true;
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      errorEl.hidden = true;
+      const payload = {};
+      for (const [key, el] of Object.entries(fields)) {
+        payload[key] = el.value.trim();
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Salvando...";
+      try {
+        const res = await fetch(API.settings, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail || `Erro ${res.status}`);
+        }
+        location.reload();
+      } catch (err) {
+        showError(err.message);
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Salvar";
+      }
+    });
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
     }
   }
 

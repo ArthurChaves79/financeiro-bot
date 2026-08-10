@@ -15,7 +15,37 @@
         <input id="search-input" type="text" placeholder="Buscar endereço, CEP ou bairro..." autocomplete="off" />
         <ul id="search-results" hidden></ul>
       </div>
+      <button id="settings-btn" type="button" title="Configurações">⚙ Configurações</button>
     </header>
+
+    <div id="settings-overlay" hidden>
+      <div id="settings-panel">
+        <h2>Configurações</h2>
+        <p class="hint">Aponte o programa para os recursos da rede local. Salvar recarrega a página.</p>
+
+        <label for="cfg-layers-dir">Pasta de camadas (GeoJSON)</label>
+        <input id="cfg-layers-dir" type="text" placeholder="\\servidor\sigview\layers" />
+
+        <label for="cfg-geocoder-db">Banco de busca (geocoder.db)</label>
+        <input id="cfg-geocoder-db" type="text" placeholder="\\servidor\sigview\geocoder.db" />
+
+        <label for="cfg-tile-url">URL do servidor de mapas (tiles)</label>
+        <input id="cfg-tile-url" type="text" placeholder="http://servidor:8080/styles/basic/style.json" />
+
+        <label for="cfg-tile-type">Tipo do mapa</label>
+        <select id="cfg-tile-type">
+          <option value="vector">Vetorial (style.json — TileServer GL)</option>
+          <option value="raster">Raster (template XYZ de imagem)</option>
+        </select>
+
+        <p id="settings-error" class="error" hidden></p>
+
+        <div class="settings-actions">
+          <button id="settings-cancel" type="button">Cancelar</button>
+          <button id="settings-save" type="button" class="primary">Salvar</button>
+        </div>
+      </div>
+    </div>
 
     <aside id="layers-panel">
       <h2>Camadas</h2>

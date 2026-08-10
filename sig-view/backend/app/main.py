@@ -18,14 +18,17 @@ from fastapi.staticfiles import StaticFiles
 
 from . import layers as layers_module
 from . import search as search_module
+from . import settings_store
 from .config import settings
+
+settings_store.load_overrides_into_settings()
 
 app = FastAPI(title="SIG View", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "PUT"],
     allow_headers=["*"],
 )
 
@@ -63,6 +66,19 @@ def api_get_layer(layer_id: str) -> dict:
         return layers_module.get_layer(layer_id)
     except layers_module.LayerNotFound as exc:
         raise HTTPException(status_code=404, detail=f"Camada '{layer_id}' não encontrada") from exc
+
+
+@app.get("/api/settings")
+def api_get_settings() -> dict:
+    return settings_store.get_editable_settings()
+
+
+@app.put("/api/settings")
+def api_update_settings(data: dict) -> dict:
+    try:
+        return settings_store.update_settings(data)
+    except settings_store.InvalidSettings as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --- Frontend estático (index.html, css, js) --------------------------------

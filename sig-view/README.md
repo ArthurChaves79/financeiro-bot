@@ -62,8 +62,28 @@ mapa, além de ligar a camada "Bairros Exemplo" no painel lateral.
 
 ## Configurando a rede local
 
-Tudo isso é feito por variáveis de ambiente (`backend/.env`, veja
-`.env.example`):
+Há duas formas, e elas se complementam:
+
+### Pela interface (recomendado para quem não mexe com arquivos de config)
+
+Dentro do próprio SIG View, clique em **⚙ Configurações** no topo da
+página. Dá pra apontar, sem editar nenhum arquivo:
+
+- **Pasta de camadas** — onde ficam os `.geojson` (local ou rede, ex: `\\servidor\sigview\layers`)
+- **Banco de busca** — caminho do `geocoder.db`
+- **URL do servidor de mapas (tiles)** — endereço do TileServer GL na rede
+- **Tipo do mapa** — vetorial ou raster
+
+Ao salvar, a página recarrega já usando os novos caminhos. Isso é
+persistido em `backend/data/config.json` (não versionado — é específico
+de cada instalação) e continua valendo mesmo depois de fechar e abrir o
+programa de novo.
+
+### Por variáveis de ambiente (valores padrão/iniciais)
+
+`backend/.env` (veja `.env.example`) define os valores usados **antes**
+de qualquer configuração ser salva pela interface — útil para uma
+instalação automatizada já sair configurada:
 
 | Variável | O que é |
 |---|---|
@@ -71,6 +91,9 @@ Tudo isso é feito por variáveis de ambiente (`backend/.env`, veja
 | `SIGVIEW_GEOCODER_DB` | caminho do banco SQLite de busca |
 | `SIGVIEW_TILE_SOURCE_URL` | URL do servidor de tiles das ruas (na rede local) |
 | `SIGVIEW_TILE_SOURCE_TYPE` | `vector` (style.json) ou `raster` (template XYZ) |
+
+Se `data/config.json` existir (porque alguém já salvou algo pela tela de
+Configurações), ele tem prioridade sobre o `.env`.
 
 ## Tiles de ruas (o mapa base)
 
@@ -128,3 +151,5 @@ funciona.
 | `GET /api/search?q=...` | busca por endereço, CEP ou bairro |
 | `GET /api/layers` | lista camadas disponíveis |
 | `GET /api/layers/{id}` | GeoJSON de uma camada |
+| `GET /api/settings` | configurações editáveis atuais (pastas/URL) |
+| `PUT /api/settings` | atualiza e persiste as configurações |

@@ -9,3 +9,9 @@ planetiler-data/
 __pycache__/
 *.pyc
 .venv/
+
+# gerados por gerar_executavel.bat
+SigView.exe
+backend/build/
+backend/dist/
+backend/*.spec

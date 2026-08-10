@@ -10,6 +10,7 @@ Rode com:  uvicorn app.main:app --host 0.0.0.0 --port 8000
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -84,6 +85,12 @@ def api_update_settings(data: dict) -> dict:
 
 
 # --- Frontend estático (index.html, css, js) --------------------------------
-FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+if getattr(sys, "frozen", False):
+    # PyInstaller extrai os arquivos empacotados (--add-data) para uma
+    # pasta temporária apontada por sys._MEIPASS.
+    FRONTEND_DIR = Path(getattr(sys, "_MEIPASS")) / "frontend"
+else:
+    FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

@@ -7,15 +7,26 @@ camadas, banco de geocoding) sem alterar código.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Quando rodando como .exe empacotado (PyInstaller), os dados (config,
+# banco de busca, camadas) precisam ficar ao lado do .exe — não dentro do
+# pacote temporário que o PyInstaller extrai, que é somente leitura e
+# descartado a cada execução. Em modo normal (python app/main.py, ou
+# `python -m uvicorn ...`), continua sendo a pasta backend/.
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="SIGVIEW_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="SIGVIEW_", env_file=BASE_DIR / ".env", extra="ignore"
+    )
 
     # Pasta com os arquivos GeoJSON de camadas. Pode ser um caminho local
     # ou um compartilhamento de rede montado no sistema operacional

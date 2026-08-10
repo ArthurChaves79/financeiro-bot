@@ -12,16 +12,21 @@ externos na internet.
 sig-view/
 ├── backend/            Python (FastAPI) — API + serve o frontend
 │   ├── app/
-│   │   ├── main.py      rotas da API e arquivos estáticos
-│   │   ├── search.py    busca por endereço/CEP/bairro (SQLite + FTS5)
-│   │   ├── layers.py    lista/serve as camadas GeoJSON
-│   │   └── config.py    configuração (variáveis de ambiente)
+│   │   ├── main.py          rotas da API e arquivos estáticos
+│   │   ├── search.py        busca por endereço/CEP/bairro (SQLite + FTS5)
+│   │   ├── layers.py        lista/serve as camadas (GeoJSON, KML, KMZ)
+│   │   ├── kml.py           conversão KML/KMZ -> GeoJSON
+│   │   ├── settings_store.py persiste config feita pela tela de Configurações
+│   │   └── config.py        configuração (variáveis de ambiente)
+│   ├── run.py           ponto de entrada usado para gerar o SigView.exe
 │   ├── scripts/
 │   │   ├── build_geocoder_index.py   gera data/geocoder.db a partir de um CSV
 │   │   ├── seed_sample_data.py       dados de exemplo, só para testar a instalação
 │   │   └── update_layers_job.py      esqueleto do job de atualização periódica
-│   └── data/            geocoder.db + layers/*.geojson (gerado, não versionado)
+│   └── data/            geocoder.db + layers/* + config.json (gerado, não versionado)
 ├── frontend/            HTML + MapLibre GL JS (o "globo" propriamente dito)
+├── instalar.bat / iniciar.bat     instalação/uso via scripts (Windows)
+├── gerar_executavel.bat           gera o SigView.exe (Windows)
 └── docker-compose.yml   servidor de tiles opcional (TileServer GL)
 ```
 
@@ -36,6 +41,23 @@ janela do navegador local.
 
 ## Como rodar
 
+Duas formas — escolha pelo perfil de quem vai usar:
+
+### Opção A — `.exe` (recomendada para distribuir na empresa)
+
+Um arquivo único (`SigView.exe`), sem precisar instalar Python nem nada
+mais no computador de quem vai usar. Ideal para PCs sem permissão de
+administrador ou sem internet.
+
+1. Numa máquina Windows com Python (a mesma onde você já rodou
+   `instalar.bat`), dê dois cliques em **`gerar_executavel.bat`**. Isso
+   gera `sig-view/SigView.exe` (só precisa ser feito uma vez, ou de novo
+   quando o código mudar).
+2. Copie `SigView.exe` para qualquer outro PC Windows da empresa e dê
+   dois cliques — abre o navegador sozinho, sem instalar nada.
+
+### Opção B — scripts `.bat` (bom para desenvolvimento/testes)
+
 ```bash
 cd sig-view/backend
 python3 -m venv .venv && source .venv/bin/activate
@@ -48,10 +70,12 @@ python scripts/seed_sample_data.py
 
 uvicorn app.main:app --reload --port 8000
 ```
+(no Windows, é o que `instalar.bat` + `iniciar.bat` fazem por você)
 
-Abra `http://localhost:8000`. Com os dados de exemplo, dá pra buscar
-"paulista", "moema" ou o CEP "01310-100" e ver o marcador aparecer no
-mapa, além de ligar a camada "Bairros Exemplo" no painel lateral.
+Em ambas, abra `http://localhost:8000` — com os dados de exemplo dá pra
+buscar "paulista", "moema" ou o CEP "01310-100" e ver o marcador
+aparecer no mapa, além de ligar a camada "Bairros Exemplo" no painel
+lateral.
 
 > Nota sobre acesso totalmente offline: o `frontend/index.html` carrega a
 > biblioteca MapLibre GL JS via CDN (unpkg) para simplificar o setup

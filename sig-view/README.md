@@ -130,9 +130,19 @@ sugeridas para montar esse CSV:
 
 ## Adicionando camadas
 
-Basta colocar um arquivo `.geojson` em `SIGVIEW_LAYERS_DIR` — ele aparece
+Basta colocar um arquivo na pasta de camadas (`SIGVIEW_LAYERS_DIR`, ou a
+que você configurou na tela ⚙ Configurações) — ele aparece
 automaticamente no painel de camadas na próxima vez que a página recarrega.
 Suporta pontos, linhas e polígonos (o frontend estiliza os três).
+
+Formatos aceitos:
+- **`.geojson`** — usado direto.
+- **`.kml`** e **`.kmz`** — os mesmos formatos que o Google Earth/Google My
+  Maps exportam. São convertidos para GeoJSON automaticamente ao serem
+  servidos (a conversão roda no backend, sem dependências externas).
+  `MultiGeometry` do KML é "achatado" em várias features simples, e dados
+  de `ExtendedData`/`SimpleData` viram propriedades da feature (aparecem
+  no popup ao clicar no mapa).
 
 ## Atualização periódica
 

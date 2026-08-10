@@ -66,6 +66,8 @@ def api_get_layer(layer_id: str) -> dict:
         return layers_module.get_layer(layer_id)
     except layers_module.LayerNotFound as exc:
         raise HTTPException(status_code=404, detail=f"Camada '{layer_id}' não encontrada") from exc
+    except layers_module.LayerReadError as exc:
+        raise HTTPException(status_code=422, detail=f"Erro ao ler a camada '{layer_id}': {exc}") from exc
 
 
 @app.get("/api/settings")

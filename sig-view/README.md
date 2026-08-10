@@ -74,14 +74,14 @@ Tudo isso é feito por variáveis de ambiente (`backend/.env`, veja
 
 ## Tiles de ruas (o mapa base)
 
-Como você só precisa de ruas (sem terreno 3D), a rota recomendada é:
+Como você só precisa de ruas (sem terreno 3D), a rota recomendada é
+gerar um `.mbtiles` vetorial a partir do OpenStreetMap (com **Planetiler**)
+e servi-lo com o `docker-compose.yml` deste projeto (**TileServer GL**)
+numa máquina da rede local.
 
-1. Baixar um extrato OpenStreetMap do Brasil/São Paulo (ex: Geofabrik).
-2. Gerar um `.mbtiles` vetorial com **Planetiler** (mais simples, um único
-   jar) ou **tilemaker**, filtrado para o estado de SP.
-3. Servir esse `.mbtiles` com o `docker-compose.yml` deste projeto
-   (TileServer GL) numa máquina da rede local.
-4. Apontar `SIGVIEW_TILE_SOURCE_URL` para o `style.json` publicado.
+Isso já está automatizado em `gerar_e_subir_mapa.bat` (Windows) — veja o
+passo a passo completo, sem precisar mexer em linha de comando, em
+[`CONFIGURAR_MAPA_LOCAL.md`](./CONFIGURAR_MAPA_LOCAL.md).
 
 Para manter atualizado com mudanças da prefeitura, combine essa base OSM
 com camadas específicas do **GeoSampa** (dados abertos da Prefeitura de

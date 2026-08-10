@@ -4,6 +4,7 @@ backend/data/_sample_enderecos.csv
 backend/data/layers/*.geojson
 !backend/data/layers/.gitkeep
 tiles/
+planetiler-data/
 __pycache__/
 *.pyc
 .venv/

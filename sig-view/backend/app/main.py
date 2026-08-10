@@ -1,0 +1,71 @@
+"""SIG View — backend FastAPI.
+
+Serve a interface web (frontend/) e expõe a API usada por ela:
+  GET  /api/config           -> configuração inicial do mapa (centro, bounds, fonte de tiles)
+  GET  /api/search?q=...     -> busca por endereço, CEP ou bairro
+  GET  /api/layers           -> lista de camadas disponíveis
+  GET  /api/layers/{id}      -> GeoJSON de uma camada específica
+
+Rode com:  uvicorn app.main:app --host 0.0.0.0 --port 8000
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from . import layers as layers_module
+from . import search as search_module
+from .config import settings
+
+app = FastAPI(title="SIG View", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/api/config")
+def get_config() -> dict:
+    return {
+        "center": {"lat": settings.map_center_lat, "lon": settings.map_center_lon},
+        "zoom": settings.map_zoom,
+        "bounds": settings.map_bounds,
+        "tile_source": {
+            "url": settings.tile_source_url,
+            "type": settings.tile_source_type,
+        },
+    }
+
+
+@app.get("/api/search")
+def api_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50)) -> dict:
+    try:
+        results = search_module.search(q, limit=limit)
+    except search_module.GeocoderUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"query": q, "results": [r.to_dict() for r in results]}
+
+
+@app.get("/api/layers")
+def api_list_layers() -> dict:
+    return {"layers": layers_module.list_layers()}
+
+
+@app.get("/api/layers/{layer_id}")
+def api_get_layer(layer_id: str) -> dict:
+    try:
+        return layers_module.get_layer(layer_id)
+    except layers_module.LayerNotFound as exc:
+        raise HTTPException(status_code=404, detail=f"Camada '{layer_id}' não encontrada") from exc
+
+
+# --- Frontend estático (index.html, css, js) --------------------------------
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

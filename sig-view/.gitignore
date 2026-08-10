@@ -1,0 +1,9 @@
+backend/.env
+backend/data/geocoder.db
+backend/data/_sample_enderecos.csv
+backend/data/layers/*.geojson
+!backend/data/layers/.gitkeep
+tiles/
+__pycache__/
+*.pyc
+.venv/

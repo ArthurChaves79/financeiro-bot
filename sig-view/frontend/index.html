@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SIG View — São Paulo</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="static/css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <h1>SIG View</h1>
+      <div id="search-box">
+        <input id="search-input" type="text" placeholder="Buscar endereço, CEP ou bairro..." autocomplete="off" />
+        <ul id="search-results" hidden></ul>
+      </div>
+    </header>
+
+    <aside id="layers-panel">
+      <h2>Camadas</h2>
+      <ul id="layers-list">
+        <li class="empty">Carregando...</li>
+      </ul>
+    </aside>
+
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="static/js/app.js"></script>
+</body>
+</html>

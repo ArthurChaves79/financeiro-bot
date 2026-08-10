@@ -1,0 +1,155 @@
+:root {
+  --bg: #101418;
+  --panel-bg: #171c22;
+  --panel-border: #2a323c;
+  --text: #e7ecf1;
+  --text-dim: #9aa7b4;
+  --accent: #3fa9f5;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "layers map";
+  height: 100vh;
+}
+
+#topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 16px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--panel-border);
+  z-index: 5;
+}
+
+#topbar h1 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+}
+
+#search-box {
+  position: relative;
+  flex: 1;
+  max-width: 480px;
+}
+
+#search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+#search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+#search-results li {
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+#search-results li:hover,
+#search-results li.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+#search-results li.empty,
+#search-results li.error {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+#layers-panel {
+  grid-area: layers;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-border);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+#layers-panel h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+#layers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#layers-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+#layers-list li.empty {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+#map {
+  grid-area: map;
+  position: relative;
+}
+
+.sigview-popup h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.sigview-popup p {
+  margin: 0;
+  font-size: 12px;
+  color: #555;
+}

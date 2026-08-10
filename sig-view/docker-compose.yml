@@ -1,0 +1,21 @@
+# Stack opcional para servir os tiles das ruas na rede local.
+#
+# Uso:
+#   1. Gere um MBTiles vetorial de São Paulo (ver README.md, seção "Tiles").
+#   2. Coloque o arquivo em ./tiles/ruas-sp.mbtiles
+#   3. docker compose up -d
+#   4. O style estará em http://<ip-do-servidor>:8080/styles/ruas-sp/style.json
+#      -> configure SIGVIEW_TILE_SOURCE_URL com essa URL no backend.
+#
+# Isso roda numa máquina/servidor da rede local — não precisa estar na
+# mesma máquina que os usuários abrem o SIG View.
+
+services:
+  tileserver:
+    image: maptiler/tileserver-gl:latest
+    container_name: sigview-tileserver
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./tiles:/data

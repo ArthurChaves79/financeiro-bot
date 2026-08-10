@@ -37,6 +37,7 @@ pip install -r requirements-build.txt
 echo.
 echo === Gerando o executavel (pode demorar alguns minutos) ===
 pyinstaller --noconfirm --onefile --name SigView ^
+  --icon "..\assets\icon.ico" ^
   --add-data "..\frontend;frontend" ^
   --collect-submodules uvicorn ^
   run.py

@@ -27,6 +27,7 @@ sig-view/
 ├── frontend/            HTML + MapLibre GL JS (o "globo" propriamente dito)
 ├── instalar.bat / iniciar.bat     instalação/uso via scripts (Windows)
 ├── gerar_executavel.bat           gera o SigView.exe (Windows)
+├── assets/               icon.ico (executável) / icon.png (favicon) + script que os gera
 └── docker-compose.yml   servidor de tiles opcional (TileServer GL)
 ```
 

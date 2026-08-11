@@ -203,6 +203,34 @@ python scripts/vincular_poligonos.py poligonos.kml atributos.csv \
 
 Rode `python scripts/vincular_poligonos.py --help` para ver todas as opções.
 
+## Corrigindo geometrias aos poucos (fluxo com editor de polígonos)
+
+Nem todos os polígonos originais batem com a realidade — é normal
+precisar corrigir a geometria de parte deles no seu editor de polígonos,
+e é impossível saber de antemão quantos serão. Para isso, use
+`scripts/aplicar_correcoes_poligonos.py` **depois** de já ter uma camada
+gerada pelo `vincular_poligonos.py`:
+
+```bash
+cd backend
+python scripts/aplicar_correcoes_poligonos.py \
+    data/layers/imoveis.geojson corrigidos.kml \
+    --saida data/layers/imoveis.geojson \
+    --pendencias pendencias_correcao.csv
+```
+
+- Baixe um lote do seu editor, corrija o que precisar, exporte
+  (`.geojson`/`.kml`/`.kmz`) — só os que você de fato mexeu, não precisa
+  reexportar tudo.
+- O script casa cada polígono corrigido com o já existente (pelo número
+  de contribuinte ou pelo nome/identificador) e **só troca a
+  geometria** — os atributos já vinculados ao banco continuam intactos.
+- Polígonos que não existiam antes (ex: um lote desmembrado durante a
+  correção) entram como novos registros, sem vínculo, e caem no
+  relatório de pendências — do mesmo jeito que no `vincular_poligonos.py`.
+- Pode rodar isso quantas vezes precisar, a cada novo lote corrigido —
+  é incremental, não refaz o que já está pronto.
+
 ## Atualização periódica
 
 `scripts/update_layers_job.py` é o esqueleto do job que deve rodar

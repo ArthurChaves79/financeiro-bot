@@ -169,6 +169,40 @@ Formatos aceitos:
   de `ExtendedData`/`SimpleData` viram propriedades da feature (aparecem
   no popup ao clicar no mapa).
 
+## Vinculando polígonos já existentes a um banco de dados
+
+Se você já tem os polígonos (KML/KMZ/GeoJSON) e os atributos já existem
+num banco relacional, **não é preciso digitar nada na mão** — use
+`scripts/vincular_poligonos.py` para juntar os dois automaticamente por
+uma chave em comum (por padrão, número do contribuinte):
+
+```bash
+cd backend
+python scripts/vincular_poligonos.py poligonos.kml atributos.csv \
+    --saida data/layers/imoveis.geojson \
+    --pendencias pendencias_imoveis.csv
+```
+
+- `atributos.csv` é um export do banco existente (qualquer SGBD gera
+  isso com um `SELECT`) — precisa ter uma coluna com a mesma chave que
+  identifica o polígono (ex: `numero_contribuinte`).
+- Polígonos que **têm** a chave e ela **existe** no CSV são vinculados
+  automaticamente — nenhum trabalho manual.
+- Polígonos sem a chave, ou com uma chave que não bate com nada no CSV,
+  entram no `pendencias_imoveis.csv` (com o motivo e a posição
+  aproximada) em vez de travar o processo — eles continuam aparecendo
+  no mapa, só sem os atributos, até você resolver.
+- Para os que ficaram pendentes, crie um `vinculos_manuais.csv` (duas
+  colunas: identificador do polígono, chave correta) e passe com
+  `--vinculos-manuais` — assim seu trabalho manual fica registrado num
+  arquivo pequeno e é reaplicado toda vez que rodar o script de novo
+  (não precisa refazer nada já resolvido).
+- Campos que só existem no SIG View (ainda não têm lugar no banco
+  antigo) entram por um CSV separado, com `--complemento`, também pela
+  mesma chave.
+
+Rode `python scripts/vincular_poligonos.py --help` para ver todas as opções.
+
 ## Atualização periódica
 
 `scripts/update_layers_job.py` é o esqueleto do job que deve rodar

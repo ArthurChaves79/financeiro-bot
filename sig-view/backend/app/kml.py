@@ -299,39 +299,93 @@ def _extrair_kml_do_kmz(data: bytes) -> bytes:
         raise KmlParseError(f"KMZ inválido (não é um zip válido): {exc}") from exc
 
 
+def _networklink_info(nl_elem: ET.Element) -> dict | None:
+    """Lê um <NetworkLink> — o mesmo recurso do Google Earth pra "indexar"
+    outros arquivos por um link que atualiza sozinho de tempos em tempos.
+    Aceita tanto <Link> (KML 2.2) quanto <Url> (mais antigo)."""
+    nome = _text(nl_elem, f"{_ANY_NS}name") or "Link"
+    link_el = nl_elem.find(f"{_ANY_NS}Link")
+    if link_el is None:
+        link_el = nl_elem.find(f"{_ANY_NS}Url")
+    if link_el is None:
+        return None
+    href = _text(link_el, f"{_ANY_NS}href")
+    if not href:
+        return None
+
+    refresh_mode = _text(link_el, f"{_ANY_NS}refreshMode") or "onChange"
+    intervalo = None
+    if refresh_mode == "onInterval":
+        interval_text = _text(link_el, f"{_ANY_NS}refreshInterval")
+        if interval_text:
+            try:
+                intervalo = float(interval_text)
+            except ValueError:
+                pass
+
+    return {"nome": nome, "href": href, "intervalo_atualizacao_segundos": intervalo}
+
+
 def _walk_folders(
     elem: ET.Element,
     path: tuple[str, ...],
     styles: dict[str, dict],
     style_maps: dict[str, str],
     groups: dict[tuple[str, ...], list[dict]],
+    network_links: dict[tuple[str, ...], list[dict]],
 ) -> None:
     for child in elem:
         tag = _local(child.tag)
         if tag == "Folder":
             name = _text(child, f"{_ANY_NS}name") or "Sem nome"
-            _walk_folders(child, path + (name,), styles, style_maps, groups)
+            _walk_folders(child, path + (name,), styles, style_maps, groups, network_links)
         elif tag == "Document":
             # Document é um contêiner "transparente" — o nome do arquivo
             # já identifica a camada raiz, não precisa virar mais um nível.
-            _walk_folders(child, path, styles, style_maps, groups)
+            _walk_folders(child, path, styles, style_maps, groups, network_links)
         elif tag == "Placemark":
             style_props = _resolve_style(child, styles, style_maps)
             features = _placemark_to_features(child, styles={}, style_maps={}, estilo_ja_resolvido=style_props)
             groups.setdefault(path, []).extend(features)
+        elif tag == "NetworkLink":
+            info = _networklink_info(child)
+            if info:
+                network_links.setdefault(path, []).append(info)
 
 
-def _parse_kml_grouped_from_root(root: ET.Element) -> list[tuple[tuple[str, ...], dict]]:
+def _parse_kml_full_from_root(
+    root: ET.Element,
+) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
     styles, style_maps = _parse_styles(root)
     groups: dict[tuple[str, ...], list[dict]] = {}
-    _walk_folders(root, (), styles, style_maps, groups)
+    network_links: dict[tuple[str, ...], list[dict]] = {}
+    _walk_folders(root, (), styles, style_maps, groups, network_links)
 
-    result = []
+    grupos = []
     for path, features in groups.items():
         if not features:
             continue
-        result.append((path, {"type": "FeatureCollection", "features": features}))
-    return result
+        grupos.append((path, {"type": "FeatureCollection", "features": features}))
+    return grupos, network_links
+
+
+def parse_kml_full(data: bytes) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
+    """Como parse_kml_grouped, mas devolve também os <NetworkLink>
+    encontrados: (grupos_de_features, network_links_por_pasta)."""
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise KmlParseError(f"KML inválido: {exc}") from exc
+    return _parse_kml_full_from_root(root)
+
+
+def parse_kmz_full(data: bytes) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
+    kml_bytes = _extrair_kml_do_kmz(data)
+    try:
+        root = ET.fromstring(kml_bytes)
+    except ET.ParseError as exc:
+        raise KmlParseError(f"KML inválido: {exc}") from exc
+    return _parse_kml_full_from_root(root)
 
 
 def parse_kml_grouped(data: bytes) -> list[tuple[tuple[str, ...], dict]]:
@@ -341,17 +395,10 @@ def parse_kml_grouped(data: bytes) -> list[tuple[tuple[str, ...], dict]]:
     Placemarks que não estão dentro de nenhuma pasta ficam sob o
     caminho vazio (). Se o KML não tem nenhuma <Folder>, devolve uma
     lista com 1 item só (caminho ()), equivalente a parse_kml_bytes."""
-    try:
-        root = ET.fromstring(data)
-    except ET.ParseError as exc:
-        raise KmlParseError(f"KML inválido: {exc}") from exc
-    return _parse_kml_grouped_from_root(root)
+    grupos, _ = parse_kml_full(data)
+    return grupos
 
 
 def parse_kmz_grouped(data: bytes) -> list[tuple[tuple[str, ...], dict]]:
-    kml_bytes = _extrair_kml_do_kmz(data)
-    try:
-        root = ET.fromstring(kml_bytes)
-    except ET.ParseError as exc:
-        raise KmlParseError(f"KML inválido: {exc}") from exc
-    return _parse_kml_grouped_from_root(root)
+    grupos, _ = parse_kmz_full(data)
+    return grupos

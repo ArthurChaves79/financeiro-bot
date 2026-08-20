@@ -189,6 +189,49 @@ KML, etc.). Propriedades internas do SIG View (usadas só pra estilo/
 controle, como a cor ou se foi vinculada a um banco) começam com `_` e
 não aparecem no popup, só os dados de verdade.
 
+## Índice com atualização automática (`<NetworkLink>`)
+
+Se você já mantém seus KMLs numa pasta de rede separada (fora da pasta
+de camadas do SIG View), não precisa copiá-los toda vez — crie um KML
+"índice" com um `<NetworkLink>` apontando pra lá, do mesmo jeito que se
+faz no Google Earth:
+
+```xml
+<?xml version="1.0"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <NetworkLink>
+    <name>Zoneamento (rede)</name>
+    <Link>
+      <href>\\servidor\camadas\zoneamento.kml</href>
+      <refreshMode>onInterval</refreshMode>
+      <refreshInterval>300</refreshInterval>
+    </Link>
+  </NetworkLink>
+</Document>
+</kml>
+```
+
+Coloque esse `indice.kml` na sua pasta de camadas normal. O SIG View
+resolve o link (o arquivo apontado pode estar em qualquer pasta/rede
+acessível, não precisa estar dentro da pasta de camadas), mostra o
+conteúdo dele na árvore no lugar onde o link apareceu, e — com
+`refreshMode=onInterval` — busca o arquivo de novo automaticamente a
+cada `refreshInterval` segundos enquanto a camada estiver ligada,
+atualizando o mapa sem precisar recarregar a página (ícone 🔄 ao lado da
+camada indica que ela atualiza sozinha).
+
+Um `<NetworkLink>` pode ficar dentro de qualquer `<Folder>` (inclusive
+aninhado), e o arquivo apontado pode ele mesmo ter suas próprias
+`<Folder>`/`<NetworkLink>`. Links quebrados (arquivo não encontrado) ou
+circulares (A aponta pra B que aponta de volta pra A) aparecem com um
+aviso (⚠) na árvore em vez de travar o carregamento das outras camadas.
+
+**Limitação atual**: só é suportado `href` de caminho de arquivo/rede
+(local ou UNC, ex: `\\servidor\pasta\arquivo.kml`) — links `http://`/
+`https://` ainda não são resolvidos (avisa com erro na árvore se
+encontrar um).
+
 ## Vinculando polígonos já existentes a um banco de dados
 
 Se você já tem os polígonos (KML/KMZ/GeoJSON) e os atributos já existem

@@ -187,6 +187,16 @@ html, body {
   font-weight: 600;
 }
 
+.layer-folder-name--link {
+  color: var(--accent);
+}
+
+.layer-link-erro {
+  font-size: 13px;
+  color: #f66;
+  cursor: help;
+}
+
 #map {
   grid-area: map;
   position: relative;

@@ -16,6 +16,7 @@
     map: null,
     marker: null,
     layerIds: new Set(), // camadas já adicionadas ao mapa
+    refreshTimers: new Map(), // layerId -> setInterval id (camadas com atualização periódica, ex: NetworkLink)
   };
 
   async function fetchJSON(url) {
@@ -131,7 +132,14 @@
       linha.appendChild(espaco);
     }
 
-    if (no.camada) {
+    if (no.erro) {
+      // Ex: NetworkLink pra um arquivo que não existe, ou link circular.
+      const aviso = document.createElement("span");
+      aviso.className = "layer-link-erro";
+      aviso.title = no.erro;
+      aviso.textContent = `⚠ ${no.nome}`;
+      linha.appendChild(aviso);
+    } else if (no.camada) {
       const camada = no.camada;
       const swatch = document.createElement("span");
       swatch.className = "layer-swatch";
@@ -145,15 +153,20 @@
       linha.appendChild(checkbox);
 
       const label = document.createElement("label");
-      label.setAttribute("for", checkboxId);
-      label.textContent = no.nome + (camada.feature_count != null ? ` (${camada.feature_count})` : "");
+      const sufixos = [];
+      if (camada.feature_count != null) sufixos.push(String(camada.feature_count));
+      if (camada.intervalo_atualizacao_segundos) sufixos.push("🔄");
+      label.textContent = no.nome + (sufixos.length ? ` (${sufixos.join(" ")})` : "");
+      if (camada.intervalo_atualizacao_segundos) {
+        label.title = `Atualiza sozinha a cada ${camada.intervalo_atualizacao_segundos}s (link de rede)`;
+      }
       linha.appendChild(label);
 
-      checkbox.addEventListener("change", () => toggleLayer(camada.id, camada.cor_padrao, checkbox.checked));
+      checkbox.addEventListener("change", () => toggleLayer(camada, checkbox.checked));
     } else {
       const nomePasta = document.createElement("span");
-      nomePasta.className = "layer-folder-name";
-      nomePasta.textContent = no.nome;
+      nomePasta.className = no.de_network_link ? "layer-folder-name layer-folder-name--link" : "layer-folder-name";
+      nomePasta.textContent = no.de_network_link ? `🔗 ${no.nome}` : no.nome;
       linha.appendChild(nomePasta);
     }
 
@@ -169,7 +182,9 @@
     return li;
   }
 
-  async function toggleLayer(layerId, corPadrao, enabled) {
+  async function toggleLayer(camada, enabled) {
+    const layerId = camada.id;
+    const corPadrao = camada.cor_padrao;
     const sourceId = `layer-src-${layerId}`;
     const fillId = `layer-fill-${layerId}`;
     const lineId = `layer-line-${layerId}`;
@@ -181,6 +196,7 @@
       }
       if (state.map.getSource(sourceId)) state.map.removeSource(sourceId);
       state.layerIds.delete(layerId);
+      pararAtualizacaoPeriodica(layerId);
       return;
     }
 
@@ -247,6 +263,40 @@
     }
 
     state.layerIds.add(layerId);
+
+    // Camadas vindas de <NetworkLink> com refreshMode=onInterval se
+    // atualizam sozinhas, igual ao Google Earth — busca de novo no
+    // backend (que relê o arquivo de rede) e atualiza só os dados da
+    // fonte no mapa, sem precisar recarregar a página.
+    if (camada.intervalo_atualizacao_segundos) {
+      iniciarAtualizacaoPeriodica(layerId, sourceId, camada.intervalo_atualizacao_segundos);
+    }
+  }
+
+  function iniciarAtualizacaoPeriodica(layerId, sourceId, intervaloSegundos) {
+    pararAtualizacaoPeriodica(layerId);
+    const timerId = setInterval(async () => {
+      const source = state.map.getSource(sourceId);
+      if (!source) {
+        pararAtualizacaoPeriodica(layerId); // camada foi desligada nesse meio tempo
+        return;
+      }
+      try {
+        const geojson = await fetchJSON(API.layer(layerId));
+        source.setData(geojson);
+      } catch (err) {
+        console.warn(`Falha ao atualizar a camada ${layerId}:`, err.message);
+      }
+    }, Math.max(intervaloSegundos, 5) * 1000); // nunca mais rápido que a cada 5s, por segurança
+    state.refreshTimers.set(layerId, timerId);
+  }
+
+  function pararAtualizacaoPeriodica(layerId) {
+    const timerId = state.refreshTimers.get(layerId);
+    if (timerId != null) {
+      clearInterval(timerId);
+      state.refreshTimers.delete(layerId);
+    }
   }
 
   // ---- Busca -------------------------------------------------------------

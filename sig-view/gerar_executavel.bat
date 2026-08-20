@@ -40,6 +40,9 @@ pyinstaller --noconfirm --onefile --name SigView ^
   --icon "..\assets\icon.ico" ^
   --add-data "..\frontend;frontend" ^
   --collect-submodules uvicorn ^
+  --collect-all webview ^
+  --collect-all clr_loader ^
+  --collect-all pythonnet ^
   run.py
 
 if errorlevel 1 (

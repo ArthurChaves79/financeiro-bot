@@ -19,8 +19,9 @@ call .venv\Scripts\activate.bat
 
 echo.
 echo Iniciando o SIG View...
-echo Deixe esta janela aberta enquanto estiver usando o mapa.
+echo Se abrir numa janela propria do programa, pode ignorar esta janela preta
+echo (ela so precisa continuar aberta por baixo). Se abrir no navegador em vez
+echo disso, ai sim precisa deixar esta janela aberta enquanto usa o mapa.
 echo.
 
-start "" http://localhost:8000
-uvicorn app.main:app --port 8000
+python run.py

@@ -36,14 +36,17 @@ sig-view/
 └── docker-compose.yml   servidor de tiles opcional (TileServer GL)
 ```
 
-Por que backend em Python mas mapa em JS no navegador? Não existe hoje
-uma engine de renderização de mapa vetorial interativo (pan/zoom) madura
-em Python equivalente ao que navegadores oferecem. A solução comum — e a
-usada aqui — é: **toda a lógica (busca, camadas, configuração) em
-Python**, e o desenho do mapa em si feito pelo MapLibre GL JS, servido
-pelo próprio backend Python e aberto no navegador (`localhost`). Do ponto
-de vista de quem usa, é um programa só: você roda um comando e abre uma
-janela do navegador local.
+Por que backend em Python mas mapa em JS? Não existe hoje uma engine de
+renderização de mapa vetorial interativo (pan/zoom) madura em Python
+equivalente ao que navegadores oferecem. A solução comum — e a usada
+aqui — é: **toda a lógica (busca, camadas, configuração) em Python**, e
+o desenho do mapa em si feito pelo MapLibre GL JS, servido pelo próprio
+backend Python. Isso não significa "abrir uma aba do navegador": o
+`run.py` (usado pelo `SigView.exe`) abre a interface numa **janela
+própria do programa**, via `pywebview` (usa o WebView2 que já vem
+instalado no Windows — não é o Chrome/Edge abrindo por fora, é uma
+janela do próprio SIG View). Só cai de volta pro modo "abre no
+navegador" se o `pywebview` não estiver disponível.
 
 ## Como rodar
 

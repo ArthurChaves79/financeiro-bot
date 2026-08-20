@@ -205,8 +205,13 @@
         linha.appendChild(badge);
       }
 
-      checkbox.addEventListener("change", () => {
-        toggleLayer(camada, checkbox.checked);
+      checkbox.addEventListener("change", (ev) => {
+        // Clique direto numa camada (não veio de um checkbox de pasta
+        // marcando várias de uma vez) -> pode voar até ela se estiver
+        // fora da área visível. Num toggle em massa (pasta), isso é
+        // desligado pra não ficar "pulando" de camada em camada.
+        const autoFit = !(ev.detail && ev.detail.emLote);
+        toggleLayer(camada, checkbox.checked, autoFit);
         atualizarAncestrais(li);
       });
     } else {
@@ -228,7 +233,7 @@
         for (const folha of li.querySelectorAll('input.layer-checkbox[data-leaf="true"]')) {
           if (folha.checked !== marcar) {
             folha.checked = marcar;
-            folha.dispatchEvent(new Event("change")); // liga/desliga a camada + propaga pros ancestrais
+            folha.dispatchEvent(new CustomEvent("change", { detail: { emLote: true } }));
           }
         }
       });
@@ -270,7 +275,61 @@
     }
   }
 
-  async function toggleLayer(camada, enabled) {
+  // Calcula a caixa envolvente (bounding box) de todas as geometrias de
+  // um GeoJSON — usado só pra decidir se precisa mover o mapa até a
+  // camada recém-carregada.
+  function bboxDoGeoJSON(geojson) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    function considerar(lon, lat) {
+      if (lon < minX) minX = lon;
+      if (lon > maxX) maxX = lon;
+      if (lat < minY) minY = lat;
+      if (lat > maxY) maxY = lat;
+    }
+
+    function percorrer(coords, tipo) {
+      if (tipo === "Point") {
+        considerar(coords[0], coords[1]);
+      } else if (tipo === "LineString" || tipo === "MultiPoint") {
+        for (const p of coords) considerar(p[0], p[1]);
+      } else if (tipo === "Polygon" || tipo === "MultiLineString") {
+        for (const parte of coords) for (const p of parte) considerar(p[0], p[1]);
+      } else if (tipo === "MultiPolygon") {
+        for (const poligono of coords) for (const anel of poligono) for (const p of anel) considerar(p[0], p[1]);
+      }
+    }
+
+    for (const feature of geojson.features || []) {
+      const g = feature.geometry;
+      if (g && g.coordinates) percorrer(g.coordinates, g.type);
+    }
+
+    return minX === Infinity ? null : [minX, minY, maxX, maxY];
+  }
+
+  // Só move o mapa se a camada realmente não estiver visível na área
+  // atual — evita ficar "pulando" toda vez que uma camada é ligada.
+  function voarParaSeNecessario(bbox) {
+    const [minX, minY, maxX, maxY] = bbox;
+    const visivel = state.map.getBounds();
+    const sobrepoe =
+      visivel.getWest() < maxX &&
+      visivel.getEast() > minX &&
+      visivel.getSouth() < maxY &&
+      visivel.getNorth() > minY;
+    if (sobrepoe) return;
+
+    state.map.fitBounds(
+      [
+        [minX, minY],
+        [maxX, maxY],
+      ],
+      { padding: 60, maxZoom: 16, duration: 600 }
+    );
+  }
+
+  async function toggleLayer(camada, enabled, autoFit = true) {
     const layerId = camada.id;
     const corPadrao = camada.cor_padrao;
     const sourceId = `layer-src-${layerId}`;
@@ -349,6 +408,14 @@
     }
 
     state.layerIds.add(layerId);
+
+    // Se a camada carregou mas está fora da área que a tela mostra
+    // agora, "voa" até ela — sem isso, ligar o checkbox parece não ter
+    // feito nada (a camada existe, só não está visível).
+    if (autoFit) {
+      const bbox = bboxDoGeoJSON(geojson);
+      if (bbox) voarParaSeNecessario(bbox);
+    }
 
     // Camadas vindas de <NetworkLink> com refreshMode=onInterval se
     // atualizam sozinhas, igual ao Google Earth — busca de novo no

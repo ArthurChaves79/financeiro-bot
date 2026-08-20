@@ -9,16 +9,29 @@ title SIG View - Gerando mapa de ruas de SP (sem Docker)...
 cd /d "%~dp0"
 
 echo.
-echo === Verificando se o Java esta instalado ===
-java -version >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo [ERRO] Java nao encontrado.
-    echo Instale o Java (Temurin, gratuito): https://adoptium.net/pt-BR/temurin/releases/
-    echo Baixe a versao "JRE" mais recente para Windows x64, instale, e rode este arquivo de novo.
-    echo.
-    pause
-    exit /b 1
+echo === Verificando se o Java esta disponivel ===
+set "JAVA_CMD=java"
+if exist "%~dp0jre\bin\java.exe" (
+    REM Java "portatil": basta ter extraido o .zip do Adoptium numa
+    REM pasta chamada "jre" aqui do lado, sem precisar instalar nada.
+    set "JAVA_CMD=%~dp0jre\bin\java.exe"
+    echo Usando Java de %~dp0jre\bin\java.exe
+) else (
+    "%JAVA_CMD%" -version >nul 2>&1
+    if errorlevel 1 (
+        echo.
+        echo [ERRO] Java nao encontrado.
+        echo Duas opcoes:
+        echo  1^) Baixe o instalador .msi do Java: https://adoptium.net/pt-BR/temurin/releases/
+        echo     ^(Sistema Operacional=Windows, Pacote=JRE, e escolha o link ".msi"^)
+        echo  2^) Ou, se ja baixou um .zip: extraia, renomeie a pasta de dentro pra
+        echo     "jre" e coloque aqui dentro de sig-view, ao lado deste arquivo,
+        echo     de forma que exista sig-view\jre\bin\java.exe
+        echo Depois rode este arquivo de novo.
+        echo.
+        pause
+        exit /b 1
+    )
 )
 
 if not exist tiles mkdir tiles
@@ -43,7 +56,7 @@ echo Isso baixa a regiao Sudeste e recorta so o estado de Sao Paulo.
 echo Pode demorar bastante na primeira vez (depende da sua internet e do computador).
 echo.
 
-java -Xmx2g -jar planetiler.jar ^
+"%JAVA_CMD%" -Xmx2g -jar planetiler.jar ^
   --download ^
   --download-url=https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf ^
   --bounds=-53.11,-25.31,-44.16,-19.78 ^

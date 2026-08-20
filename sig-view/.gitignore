@@ -10,6 +10,7 @@ tiles/
 planetiler-data/
 planetiler.jar
 jre/
+dados-osm/
 __pycache__/
 *.pyc
 .venv/

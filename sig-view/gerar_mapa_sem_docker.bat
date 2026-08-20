@@ -35,6 +35,7 @@ if exist "%~dp0jre\bin\java.exe" (
 )
 
 if not exist tiles mkdir tiles
+if not exist dados-osm mkdir dados-osm
 
 if not exist planetiler.jar (
     echo.
@@ -50,21 +51,58 @@ if not exist planetiler.jar (
     )
 )
 
+REM Em redes de empresa com proxy, o Java as vezes nao consegue baixar
+REM o extrato do OpenStreetMap sozinho (mesmo o navegador conseguindo).
+REM Por isso, em vez de o proprio Planetiler baixar, pedimos pra baixar
+REM manualmente pelo navegador (que ja funciona) e usamos o arquivo local.
+set "OSM_FILE=dados-osm\sudeste-latest.osm.pbf"
+
+if not exist "%OSM_FILE%" (
+    echo.
+    echo [ACAO NECESSARIA] Falta baixar o arquivo de dados do OpenStreetMap.
+    echo.
+    echo 1^) Abra este link no navegador ^(o mesmo que ja funcionou antes^):
+    echo    https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf
+    echo 2^) Espere baixar por completo ^(uns 800 MB^).
+    echo 3^) Mova/renomeie o arquivo baixado para:
+    echo    %~dp0%OSM_FILE%
+    echo 4^) Rode este script de novo.
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
-echo === Baixando e processando os dados de ruas (OpenStreetMap) ===
-echo Isso baixa a regiao Sudeste e recorta so o estado de Sao Paulo.
-echo Pode demorar bastante na primeira vez (depende da sua internet e do computador).
+echo === Verificando o arquivo baixado ===
+for %%A in ("%OSM_FILE%") do set OSM_SIZE=%%~zA
+set /a OSM_SIZE_MB=%OSM_SIZE:~0,-6% 2>nul
+if not defined OSM_SIZE_MB set OSM_SIZE_MB=0
+echo Tamanho: %OSM_SIZE_MB% MB aproximadamente.
+if %OSM_SIZE_MB% LSS 100 (
+    echo.
+    echo [AVISO] Esse arquivo parece pequeno demais ^(deveria ter uns 800 MB^).
+    echo Pode estar incompleto. Se o mapa sair vazio de novo, apague
+    echo "%OSM_FILE%" e baixe de novo pelo navegador, deixando terminar.
+    echo.
+)
+
+echo.
+echo === Processando os dados de ruas (recortando so o estado de SP) ===
+echo Isso pode demorar varios minutos, dependendo do computador.
 echo.
 
 "%JAVA_CMD%" -Xmx2g -jar planetiler.jar ^
-  --download ^
-  --download-url=https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf ^
+  --osm-path="%OSM_FILE%" ^
   --bounds=-53.11,-25.31,-44.16,-19.78 ^
   --output=tiles\ruas-sp.mbtiles
 
 if errorlevel 1 (
     echo.
     echo [ERRO] Algo deu errado ao gerar o mapa. Veja a mensagem acima.
+    echo Se a mensagem falar de um parametro/opcao nao reconhecida perto
+    echo de "--osm-path", rode "%JAVA_CMD%" -jar planetiler.jar --help
+    echo e procure o nome certo do parametro pra usar um arquivo local
+    echo ^(pode ter mudado de nome numa versao mais nova do Planetiler^).
     echo.
     pause
     exit /b 1

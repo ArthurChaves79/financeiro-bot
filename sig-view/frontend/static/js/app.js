@@ -114,10 +114,17 @@
     }
   }
 
+  let _folderIdSeq = 0;
+
   // A API devolve uma árvore (igual ao painel "Locais" do Google Earth):
   // cada nó pode ter uma camada própria (checkbox) e/ou subpastas
   // (seta de expandir/recolher) — os dois ao mesmo tempo, se o KML
   // tiver placemarks soltos dentro de uma pasta que também tem subpastas.
+  //
+  // Pastas também têm checkbox: marcar liga TODAS as camadas daquela
+  // pasta (e subpastas) de uma vez, igual ao Google Earth. O estado da
+  // pasta (marcada / desmarcada / parcial) é recalculado a partir das
+  // camadas-folha reais sempre que uma muda, subindo pela árvore.
   function renderLayerNode(no) {
     const li = document.createElement("li");
     li.className = "layer-node";
@@ -159,21 +166,27 @@
       aviso.title = no.erro;
       aviso.textContent = `⚠ ${no.nome}`;
       linha.appendChild(aviso);
-    } else if (no.camada) {
+      li.appendChild(linha);
+      return li;
+    }
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "layer-checkbox";
+
+    if (no.camada) {
       const camada = no.camada;
+      checkbox.dataset.leaf = "true";
+      checkbox.id = `layer-${camada.id}`;
+
       const swatch = document.createElement("span");
       swatch.className = "layer-swatch";
       swatch.style.background = camada.cor_padrao || "#3fa9f5";
       linha.appendChild(swatch);
-
-      const checkboxId = `layer-${camada.id}`;
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.id = checkboxId;
       linha.appendChild(checkbox);
 
       const label = document.createElement("label");
-      label.setAttribute("for", checkboxId);
+      label.setAttribute("for", checkbox.id);
       label.textContent = no.nome;
       linha.appendChild(label);
 
@@ -192,12 +205,33 @@
         linha.appendChild(badge);
       }
 
-      checkbox.addEventListener("change", () => toggleLayer(camada, checkbox.checked));
+      checkbox.addEventListener("change", () => {
+        toggleLayer(camada, checkbox.checked);
+        atualizarAncestrais(li);
+      });
     } else {
-      const nomePasta = document.createElement("span");
-      nomePasta.className = no.de_network_link ? "layer-folder-name layer-folder-name--link" : "layer-folder-name";
-      nomePasta.textContent = no.de_network_link ? `🔗 ${no.nome}` : no.nome;
-      linha.appendChild(nomePasta);
+      // Pasta pura (sem camada própria nesse nível) — o checkbox liga
+      // tudo que está dentro dela.
+      checkbox.dataset.folder = "true";
+      checkbox.id = `layer-folder-${++_folderIdSeq}`;
+      linha.appendChild(checkbox);
+
+      const label = document.createElement("label");
+      label.setAttribute("for", checkbox.id);
+      label.className = no.de_network_link ? "layer-folder-name layer-folder-name--link" : "layer-folder-name";
+      label.textContent = no.de_network_link ? `🔗 ${no.nome}` : no.nome;
+      linha.appendChild(label);
+
+      checkbox.addEventListener("change", () => {
+        const marcar = checkbox.checked;
+        checkbox.indeterminate = false;
+        for (const folha of li.querySelectorAll('input.layer-checkbox[data-leaf="true"]')) {
+          if (folha.checked !== marcar) {
+            folha.checked = marcar;
+            folha.dispatchEvent(new Event("change")); // liga/desliga a camada + propaga pros ancestrais
+          }
+        }
+      });
     }
 
     li.appendChild(linha);
@@ -207,9 +241,33 @@
         subLista.appendChild(renderLayerNode(filho));
       }
       li.appendChild(subLista);
+      if (no.camada) {
+        // Pasta que TAMBÉM é camada (placemarks soltos + subpastas): o
+        // checkbox dela some do cálculo de "pasta" pra não conflitar com
+        // o dela própria como folha — o de cima já cobre o caso comum.
+      } else {
+        recalcularCheckboxPasta(li); // pastas recém-montadas começam desmarcadas/vazias
+      }
     }
 
     return li;
+  }
+
+  function recalcularCheckboxPasta(li) {
+    const checkbox = li.querySelector(':scope > .layer-row > input.layer-checkbox[data-folder="true"]');
+    if (!checkbox) return;
+    const folhas = li.querySelectorAll('input.layer-checkbox[data-leaf="true"]');
+    const marcadas = Array.from(folhas).filter((cb) => cb.checked).length;
+    checkbox.checked = folhas.length > 0 && marcadas === folhas.length;
+    checkbox.indeterminate = marcadas > 0 && marcadas < folhas.length;
+  }
+
+  function atualizarAncestrais(li) {
+    let atual = li.parentElement && li.parentElement.closest("li.layer-node");
+    while (atual) {
+      recalcularCheckboxPasta(atual);
+      atual = atual.parentElement && atual.parentElement.closest("li.layer-node");
+    }
   }
 
   async function toggleLayer(camada, enabled) {

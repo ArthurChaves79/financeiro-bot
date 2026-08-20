@@ -169,6 +169,24 @@ Formatos aceitos:
   de `ExtendedData`/`SimpleData` viram propriedades da feature (aparecem
   no popup ao clicar no mapa).
 
+**Pastas dentro do KML (`<Folder>`)** viram camadas separadas
+automaticamente — cada uma aparece com seu próprio checkbox no painel,
+ligável/desligável independente das outras (inclusive pastas aninhadas,
+que aparecem como "Pasta / Subpasta").
+
+**Cores**: se o `.kml` já define `<Style>`/`<StyleMap>` (cor de
+preenchimento, cor e espessura de linha, cor do ícone), essa cor é
+respeitada. Camadas ou pastas sem estilo próprio (incluindo `.geojson`)
+recebem uma cor automática, sempre a mesma pra cada camada (não muda ao
+reiniciar o programa), pra ficar fácil distinguir uma camada da outra no
+mapa e no painel lateral.
+
+**Clique no mapa**: funciona em pontos, linhas e polígonos — mostra
+todos os atributos daquela feature num popup (o que veio do banco, do
+KML, etc.). Propriedades internas do SIG View (usadas só pra estilo/
+controle, como a cor ou se foi vinculada a um banco) começam com `_` e
+não aparecem no popup, só os dados de verdade.
+
 ## Vinculando polígonos já existentes a um banco de dados
 
 Se você já tem os polígonos (KML/KMZ/GeoJSON) e os atributos já existem

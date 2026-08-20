@@ -126,6 +126,14 @@ html, body {
   gap: 8px;
 }
 
+.layer-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
 #layers-list li {
   display: flex;
   align-items: center;

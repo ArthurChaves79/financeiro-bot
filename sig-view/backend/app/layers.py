@@ -7,19 +7,39 @@ simplesmente colocar um novo arquivo na pasta.
 
 Formatos suportados: `.geojson` (nativo) e `.kml` / `.kmz` (exportados do
 Google Earth / Google My Maps — convertidos para GeoJSON na hora de
-servir).
+servir). Um único arquivo `.kml` pode conter várias `<Folder>` — cada
+uma vira uma camada própria, ligável separadamente no painel.
 """
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
+import zlib
 from pathlib import Path
 
 from . import kml as kml_module
 from .config import settings
 
-# Ordem de preferência quando há mais de um arquivo com o mesmo nome
-# (ex: "bairros.geojson" e "bairros.kml") — o primeiro que existir vence.
 _SUPPORTED_EXTENSIONS = (".geojson", ".kml", ".kmz")
+
+# Cores padrão usadas quando a camada (ou pasta do KML) não define a
+# própria cor via <Style> — escolhidas por serem bem distinguíveis entre
+# si sobre um mapa escuro.
+_PALETA_CORES = [
+    "#3fa9f5",  # azul
+    "#f5a93f",  # laranja
+    "#5fd576",  # verde
+    "#e05fd5",  # magenta
+    "#f5e03f",  # amarelo
+    "#5fc9d5",  # ciano
+    "#e0605f",  # vermelho
+    "#9d6fe0",  # roxo
+    "#d59a5f",  # marrom claro
+    "#6f9de0",  # azul claro
+]
+
+_GROUP_SEP = "__grupo__"
 
 
 class LayerNotFound(FileNotFoundError):
@@ -30,17 +50,59 @@ class LayerReadError(ValueError):
     pass
 
 
-def _safe_layer_path(name: str) -> Path:
-    """Resolve o nome da camada para um arquivo dentro de layers_dir,
-    impedindo path traversal (ex: "../../etc/passwd")."""
+def cor_padrao_da_camada(layer_id: str) -> str:
+    """Cor determinística por camada (mesma camada = mesma cor sempre,
+    mesmo depois de reiniciar o programa)."""
+    indice = zlib.crc32(layer_id.encode("utf-8")) % len(_PALETA_CORES)
+    return _PALETA_CORES[indice]
+
+
+def _slug(texto: str) -> str:
+    sem_acento = unicodedata.normalize("NFKD", texto)
+    sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", sem_acento).strip("-").lower()
+    return slug or "camada"
+
+
+def _find_source_file(stem: str) -> Path | None:
+    """Acha o arquivo (.geojson/.kml/.kmz) correspondente ao stem dentro
+    de layers_dir, sem permitir escapar da pasta (path traversal)."""
     layers_dir = settings.layers_dir.resolve()
     for ext in _SUPPORTED_EXTENSIONS:
-        candidate = (layers_dir / f"{name}{ext}").resolve()
+        candidate = (layers_dir / f"{stem}{ext}").resolve()
         if layers_dir not in candidate.parents and candidate != layers_dir:
-            continue  # tentativa de escapar da pasta, ignora
+            continue
         if candidate.is_file():
             return candidate
-    raise LayerNotFound(name)
+    return None
+
+
+def _grupos_do_arquivo(path: Path) -> list[tuple[str, dict]]:
+    """Devolve [(nome_do_grupo, geojson), ...] para um arquivo. Para
+    .geojson é sempre 1 grupo (nome ""); para .kml/.kmz respeita as
+    <Folder> encontradas."""
+    suffix = path.suffix.lower()
+    if suffix == ".geojson":
+        with path.open("r", encoding="utf-8") as fh:
+            return [("", json.load(fh))]
+    if suffix == ".kml":
+        return kml_module.parse_kml_grouped(path.read_bytes())
+    if suffix == ".kmz":
+        return kml_module.parse_kmz_grouped(path.read_bytes())
+    raise LayerReadError(f"Formato não suportado: {suffix}")
+
+
+def _layer_id(stem: str, grupos: list[tuple[str, dict]], nome_grupo: str) -> str:
+    if len(grupos) == 1 and nome_grupo == "":
+        return stem  # arquivo sem pastas: camada única, id = nome do arquivo (compatível com antes)
+    return f"{stem}{_GROUP_SEP}{_slug(nome_grupo)}"
+
+
+def _nome_exibicao(stem: str, nome_grupo: str) -> str:
+    base = stem.replace("_", " ").replace("-", " ").title()
+    if not nome_grupo:
+        return base
+    return f"{base} — {nome_grupo}"
 
 
 def list_layers() -> list[dict]:
@@ -49,50 +111,61 @@ def list_layers() -> list[dict]:
         return []
 
     result = []
+    stems_vistos: set[str] = set()
     for path in sorted(layers_dir.iterdir()):
-        if path.suffix.lower() in _SUPPORTED_EXTENSIONS and path.is_file():
-            result.append(_layer_metadata(path))
+        if not path.is_file() or path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
+            continue
+        stem = path.stem
+        if stem in stems_vistos:
+            continue  # evita duplicar se existir ex: bairros.geojson E bairros.kml
+        stems_vistos.add(stem)
+
+        try:
+            grupos = _grupos_do_arquivo(path)
+        except (json.JSONDecodeError, OSError, kml_module.KmlParseError, LayerReadError):
+            continue
+
+        mtime = path.stat().st_mtime
+        for nome_grupo, geojson in grupos:
+            layer_id = _layer_id(stem, grupos, nome_grupo)
+            features = geojson.get("features", [])
+            result.append(
+                {
+                    "id": layer_id,
+                    "nome": _nome_exibicao(stem, nome_grupo),
+                    "formato": path.suffix.lstrip(".").lower(),
+                    "feature_count": len(features),
+                    "geometry_type": features[0].get("geometry", {}).get("type") if features else None,
+                    "cor_padrao": cor_padrao_da_camada(layer_id),
+                    "atualizado_em": mtime,
+                }
+            )
     return result
 
 
-def _layer_metadata(path: Path) -> dict:
-    name = path.stem
-    feature_count = None
-    geometry_type = None
+def get_layer(layer_id: str) -> dict:
+    if _GROUP_SEP in layer_id:
+        stem, slug_grupo = layer_id.split(_GROUP_SEP, 1)
+    else:
+        stem, slug_grupo = layer_id, None
+
+    path = _find_source_file(stem)
+    if path is None:
+        raise LayerNotFound(layer_id)
+
     try:
-        geojson = _read_as_geojson(path)
-        features = geojson.get("features", [])
-        feature_count = len(features)
-        if features:
-            geometry_type = features[0].get("geometry", {}).get("type")
-    except (json.JSONDecodeError, OSError, kml_module.KmlParseError):
-        pass
-
-    return {
-        "id": name,
-        "nome": name.replace("_", " ").replace("-", " ").title(),
-        "formato": path.suffix.lstrip(".").lower(),
-        "feature_count": feature_count,
-        "geometry_type": geometry_type,
-        "atualizado_em": path.stat().st_mtime,
-    }
-
-
-def get_layer(name: str) -> dict:
-    path = _safe_layer_path(name)
-    try:
-        return _read_as_geojson(path)
+        grupos = _grupos_do_arquivo(path)
     except kml_module.KmlParseError as exc:
         raise LayerReadError(str(exc)) from exc
 
+    if slug_grupo is None:
+        # id "simples": só é válido se o arquivo realmente tiver 1 grupo sem nome
+        if len(grupos) == 1 and grupos[0][0] == "":
+            return grupos[0][1]
+        raise LayerNotFound(layer_id)
 
-def _read_as_geojson(path: Path) -> dict:
-    suffix = path.suffix.lower()
-    if suffix == ".geojson":
-        with path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
-    if suffix == ".kml":
-        return kml_module.parse_kml_bytes(path.read_bytes())
-    if suffix == ".kmz":
-        return kml_module.parse_kmz_bytes(path.read_bytes())
-    raise LayerReadError(f"Formato não suportado: {suffix}")
+    for nome_grupo, geojson in grupos:
+        if nome_grupo and _slug(nome_grupo) == slug_grupo:
+            return geojson
+
+    raise LayerNotFound(layer_id)

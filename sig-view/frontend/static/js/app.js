@@ -92,18 +92,19 @@
       const li = document.createElement("li");
       const checkboxId = `layer-${layer.id}`;
       li.innerHTML = `
+        <span class="layer-swatch" style="background:${escapeHtml(layer.cor_padrao || "#3fa9f5")}"></span>
         <input type="checkbox" id="${checkboxId}" />
         <label for="${checkboxId}">${escapeHtml(layer.nome)}${
         layer.feature_count != null ? ` <small>(${layer.feature_count})</small>` : ""
       }</label>
       `;
       const checkbox = li.querySelector("input");
-      checkbox.addEventListener("change", () => toggleLayer(layer.id, checkbox.checked));
+      checkbox.addEventListener("change", () => toggleLayer(layer.id, layer.cor_padrao, checkbox.checked));
       listEl.appendChild(li);
     }
   }
 
-  async function toggleLayer(layerId, enabled) {
+  async function toggleLayer(layerId, corPadrao, enabled) {
     const sourceId = `layer-src-${layerId}`;
     const fillId = `layer-fill-${layerId}`;
     const lineId = `layer-line-${layerId}`;
@@ -130,39 +131,55 @@
 
     state.map.addSource(sourceId, { type: "geojson", data: geojson });
 
+    const cor = corPadrao || "#3fa9f5";
+    // Usa a cor definida no próprio KML (_cor_preenchimento/_cor_linha),
+    // quando existir; senão cai para a cor padrão desta camada.
+    const corPreenchimento = ["coalesce", ["get", "_cor_preenchimento"], cor];
+    const opacidadePreenchimento = ["coalesce", ["get", "_opacidade_preenchimento"], 0.25];
+    const corLinha = ["coalesce", ["get", "_cor_linha"], cor];
+    const larguraLinha = ["coalesce", ["get", "_largura_linha"], 2];
+    const corPonto = ["coalesce", ["get", "_cor_ponto"], cor];
+
     state.map.addLayer({
       id: fillId,
       type: "fill",
       source: sourceId,
       filter: ["==", ["geometry-type"], "Polygon"],
-      paint: { "fill-color": "#3fa9f5", "fill-opacity": 0.15 },
+      paint: { "fill-color": corPreenchimento, "fill-opacity": opacidadePreenchimento },
     });
     state.map.addLayer({
       id: lineId,
       type: "line",
       source: sourceId,
       filter: ["any", ["==", ["geometry-type"], "Polygon"], ["==", ["geometry-type"], "LineString"]],
-      paint: { "line-color": "#3fa9f5", "line-width": 2 },
+      paint: { "line-color": corLinha, "line-width": larguraLinha },
     });
     state.map.addLayer({
       id: pointId,
       type: "circle",
       source: sourceId,
       filter: ["==", ["geometry-type"], "Point"],
-      paint: { "circle-radius": 5, "circle-color": "#3fa9f5", "circle-stroke-color": "#fff", "circle-stroke-width": 1 },
+      paint: { "circle-radius": 6, "circle-color": corPonto, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 },
     });
 
-    state.map.on("click", pointId, (e) => {
-      const feature = e.features[0];
-      const props = feature.properties || {};
-      const html = Object.entries(props)
-        .map(([k, v]) => `<p><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(v))}</p>`)
-        .join("");
-      new maplibregl.Popup()
-        .setLngLat(feature.geometry.coordinates)
-        .setHTML(`<div class="sigview-popup"><h3>${escapeHtml(layerId)}</h3>${html}</div>`)
-        .addTo(state.map);
-    });
+    // Clique em qualquer tipo de geometria (ponto, linha ou polígono)
+    // abre um popup com todos os atributos da feature.
+    for (const id of [fillId, lineId, pointId]) {
+      state.map.on("click", id, (e) => {
+        const feature = e.features[0];
+        const props = feature.properties || {};
+        const entradas = Object.entries(props).filter(([k]) => !k.startsWith("_"));
+        const html = entradas.length
+          ? entradas.map(([k, v]) => `<p><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(v))}</p>`).join("")
+          : "<p><em>Sem atributos</em></p>";
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`<div class="sigview-popup"><h3>${escapeHtml(props.nome || layerId)}</h3>${html}</div>`)
+          .addTo(state.map);
+      });
+      state.map.on("mouseenter", id, () => { state.map.getCanvas().style.cursor = "pointer"; });
+      state.map.on("mouseleave", id, () => { state.map.getCanvas().style.cursor = ""; });
+    }
 
     state.layerIds.add(layerId);
   }

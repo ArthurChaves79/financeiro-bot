@@ -22,6 +22,16 @@ só a área do estado de São Paulo, gerando o arquivo em
 A primeira vez demora (baixa uns 300-600 MB e processa) — pode levar de
 10 a 40 minutos dependendo da internet/computador.
 
+### Sem Docker (se der problema com Docker/WSL)
+
+O Docker no Windows depende do WSL, que às vezes dá problema pra
+instalar/atualizar (erros como `wsl.exe --version: exit status 1`). Se
+isso acontecer, use **`gerar_mapa_sem_docker.bat`** em vez do
+`gerar_e_subir_mapa.bat` — faz a mesma coisa, mas só precisa de **Java**
+instalado (bem mais simples: um instalador comum, sem WSL, sem
+virtualização, sem mexer na BIOS). Baixe o Java (Temurin, gratuito) em
+https://adoptium.net/pt-BR/temurin/releases/ antes de rodar.
+
 ## Passo 2 — Usar
 
 Não precisa de mais nada! Ao abrir o SIG View (`iniciar.bat`, ou o

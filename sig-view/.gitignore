@@ -8,6 +8,7 @@ backend/data/layers/*.geojson
 !backend/data/layers/.gitkeep
 tiles/
 planetiler-data/
+planetiler.jar
 __pycache__/
 *.pyc
 .venv/

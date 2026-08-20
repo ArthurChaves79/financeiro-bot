@@ -88,20 +88,85 @@
     }
 
     listEl.innerHTML = "";
-    for (const layer of data.layers) {
-      const li = document.createElement("li");
-      const checkboxId = `layer-${layer.id}`;
-      li.innerHTML = `
-        <span class="layer-swatch" style="background:${escapeHtml(layer.cor_padrao || "#3fa9f5")}"></span>
-        <input type="checkbox" id="${checkboxId}" />
-        <label for="${checkboxId}">${escapeHtml(layer.nome)}${
-        layer.feature_count != null ? ` <small>(${layer.feature_count})</small>` : ""
-      }</label>
-      `;
-      const checkbox = li.querySelector("input");
-      checkbox.addEventListener("change", () => toggleLayer(layer.id, layer.cor_padrao, checkbox.checked));
-      listEl.appendChild(li);
+    for (const no of data.layers) {
+      listEl.appendChild(renderLayerNode(no));
     }
+  }
+
+  // A API devolve uma árvore (igual ao painel "Locais" do Google Earth):
+  // cada nó pode ter uma camada própria (checkbox) e/ou subpastas
+  // (seta de expandir/recolher) — os dois ao mesmo tempo, se o KML
+  // tiver placemarks soltos dentro de uma pasta que também tem subpastas.
+  function renderLayerNode(no) {
+    const li = document.createElement("li");
+    li.className = "layer-node";
+
+    const linha = document.createElement("div");
+    linha.className = "layer-row";
+
+    const temFilhos = Array.isArray(no.criancas) && no.criancas.length > 0;
+    let subLista = null;
+
+    if (temFilhos) {
+      const seta = document.createElement("button");
+      seta.type = "button";
+      seta.className = "layer-toggle-arrow";
+      seta.textContent = "▶";
+      seta.setAttribute("aria-expanded", "false");
+      linha.appendChild(seta);
+
+      subLista = document.createElement("ul");
+      subLista.className = "layer-children";
+      subLista.hidden = true;
+
+      seta.addEventListener("click", () => {
+        const vaiAbrir = subLista.hidden;
+        subLista.hidden = !vaiAbrir;
+        seta.textContent = vaiAbrir ? "▼" : "▶";
+        seta.setAttribute("aria-expanded", String(vaiAbrir));
+      });
+    } else {
+      const espaco = document.createElement("span");
+      espaco.className = "layer-toggle-arrow layer-toggle-arrow--vazio";
+      linha.appendChild(espaco);
+    }
+
+    if (no.camada) {
+      const camada = no.camada;
+      const swatch = document.createElement("span");
+      swatch.className = "layer-swatch";
+      swatch.style.background = camada.cor_padrao || "#3fa9f5";
+      linha.appendChild(swatch);
+
+      const checkboxId = `layer-${camada.id}`;
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = checkboxId;
+      linha.appendChild(checkbox);
+
+      const label = document.createElement("label");
+      label.setAttribute("for", checkboxId);
+      label.textContent = no.nome + (camada.feature_count != null ? ` (${camada.feature_count})` : "");
+      linha.appendChild(label);
+
+      checkbox.addEventListener("change", () => toggleLayer(camada.id, camada.cor_padrao, checkbox.checked));
+    } else {
+      const nomePasta = document.createElement("span");
+      nomePasta.className = "layer-folder-name";
+      nomePasta.textContent = no.nome;
+      linha.appendChild(nomePasta);
+    }
+
+    li.appendChild(linha);
+
+    if (temFilhos) {
+      for (const filho of no.criancas) {
+        subLista.appendChild(renderLayerNode(filho));
+      }
+      li.appendChild(subLista);
+    }
+
+    return li;
   }
 
   async function toggleLayer(layerId, corPadrao, enabled) {

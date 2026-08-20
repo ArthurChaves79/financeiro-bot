@@ -169,10 +169,12 @@ Formatos aceitos:
   de `ExtendedData`/`SimpleData` viram propriedades da feature (aparecem
   no popup ao clicar no mapa).
 
-**Pastas dentro do KML (`<Folder>`)** viram camadas separadas
-automaticamente — cada uma aparece com seu próprio checkbox no painel,
-ligável/desligável independente das outras (inclusive pastas aninhadas,
-que aparecem como "Pasta / Subpasta").
+**Pastas dentro do KML (`<Folder>`)** aparecem como uma árvore
+expansível no painel, igual ao painel "Locais" do Google Earth: cada
+pasta tem uma seta (▶/▼) pra abrir/fechar e pode conter outras pastas
+dentro (inclusive aninhadas em vários níveis). Se a pasta tem placemarks
+direto nela (não só subpastas), ela também ganha seu próprio checkbox,
+independente das subpastas.
 
 **Cores**: se o `.kml` já define `<Style>`/`<StyleMap>` (cor de
 preenchimento, cor e espessura de linha, cor do ícone), essa cor é

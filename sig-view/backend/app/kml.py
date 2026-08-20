@@ -321,7 +321,7 @@ def _walk_folders(
             groups.setdefault(path, []).extend(features)
 
 
-def _parse_kml_grouped_from_root(root: ET.Element) -> list[tuple[str, dict]]:
+def _parse_kml_grouped_from_root(root: ET.Element) -> list[tuple[tuple[str, ...], dict]]:
     styles, style_maps = _parse_styles(root)
     groups: dict[tuple[str, ...], list[dict]] = {}
     _walk_folders(root, (), styles, style_maps, groups)
@@ -330,16 +330,17 @@ def _parse_kml_grouped_from_root(root: ET.Element) -> list[tuple[str, dict]]:
     for path, features in groups.items():
         if not features:
             continue
-        result.append((" / ".join(path), {"type": "FeatureCollection", "features": features}))
+        result.append((path, {"type": "FeatureCollection", "features": features}))
     return result
 
 
-def parse_kml_grouped(data: bytes) -> list[tuple[str, dict]]:
-    """Como parse_kml_bytes, mas respeita as <Folder> do KML: devolve uma
-    lista de (nome_da_pasta, geojson) — uma entrada por pasta encontrada.
-    Placemarks que não estão dentro de nenhuma pasta ficam sob nome "".
-    Se o KML não tem nenhuma <Folder>, devolve uma lista com 1 item só
-    (nome ""), equivalente a parse_kml_bytes."""
+def parse_kml_grouped(data: bytes) -> list[tuple[tuple[str, ...], dict]]:
+    """Como parse_kml_bytes, mas respeita as <Folder> do KML (inclusive
+    aninhadas): devolve uma lista de (caminho_da_pasta, geojson), onde
+    caminho_da_pasta é uma tupla, ex: ("Zoneamento", "Residencial").
+    Placemarks que não estão dentro de nenhuma pasta ficam sob o
+    caminho vazio (). Se o KML não tem nenhuma <Folder>, devolve uma
+    lista com 1 item só (caminho ()), equivalente a parse_kml_bytes."""
     try:
         root = ET.fromstring(data)
     except ET.ParseError as exc:
@@ -347,7 +348,7 @@ def parse_kml_grouped(data: bytes) -> list[tuple[str, dict]]:
     return _parse_kml_grouped_from_root(root)
 
 
-def parse_kmz_grouped(data: bytes) -> list[tuple[str, dict]]:
+def parse_kmz_grouped(data: bytes) -> list[tuple[tuple[str, ...], dict]]:
     kml_bytes = _extrair_kml_do_kmz(data)
     try:
         root = ET.fromstring(kml_bytes)

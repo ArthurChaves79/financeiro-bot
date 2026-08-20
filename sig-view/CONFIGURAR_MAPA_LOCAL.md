@@ -1,82 +1,57 @@
-# Configurar o mapa base local (ruas) — guia para quem for preparar o servidor
+# Configurar o mapa base local (ruas)
 
-Esta etapa gera o "mapa de fundo" (as ruas desenhadas) e o deixa disponível
-na rede da empresa, para todo mundo que rodar o SIG View usar. **É feita
-uma vez** (e repetida periodicamente para atualizar), num único
-computador/servidor — não em cada máquina de usuário.
+Esta etapa gera o "mapa de fundo" (as ruas desenhadas). O próprio SIG
+View sabe servir esse mapa sozinho (lendo um arquivo `.mbtiles`) — não
+precisa de nenhum servidor rodando no dia a dia, nem Docker, nem
+internet, uma vez que o arquivo esteja pronto.
 
-> Se você é leigo em TI, o ideal é pedir para alguém do TI ou um
-> colega mais técnico rodar esta parte. Ela precisa instalar o Docker, o
-> que normalmente exige permissão de administrador.
+## Passo 1 — Gerar o arquivo do mapa (feito uma vez, ou quando quiser atualizar)
 
-## Pré-requisitos
+Isso usa Docker só nesta etapa (pra rodar o Planetiler, a ferramenta que
+processa os dados do OpenStreetMap) — não fica rodando depois.
 
-- **Docker Desktop** instalado nesse computador/servidor: https://www.docker.com/products/docker-desktop/
-  (no Windows, pede reiniciar e às vezes habilitar "virtualização" na BIOS —
-  é por isso que recomendamos que o TI faça essa parte).
-- Uns **4 GB de espaço livre em disco** e uma conexão de internet (só
-  nesta etapa, para baixar o mapa do OpenStreetMap uma vez).
-
-## Passo a passo
-
-### 1. Gerar o arquivo do mapa (tiles) da região de São Paulo
+**Pré-requisitos**: Docker Desktop instalado (https://www.docker.com/products/docker-desktop/)
+e uns 4 GB de espaço livre + internet (só pra baixar os dados do mapa
+uma vez).
 
 Na pasta `sig-view`, dê dois cliques em **`gerar_e_subir_mapa.bat`**.
-
-Isso vai, automaticamente:
-1. Baixar os dados de ruas da região Sudeste (OpenStreetMap, fonte aberta e gratuita) e recortar só a área do estado de São Paulo.
-2. Gerar o arquivo `tiles/ruas-sp.mbtiles` (o "mapa" propriamente dito).
-3. Subir um servidor local (`TileServer GL`, via Docker) que serve esse mapa.
+Isso baixa os dados de ruas da região Sudeste (OpenStreetMap) e recorta
+só a área do estado de São Paulo, gerando o arquivo em
+`backend/data/mapa.mbtiles` — já no lugar certo pro SIG View usar.
 
 A primeira vez demora (baixa uns 300-600 MB e processa) — pode levar de
-10 a 40 minutos dependendo da internet/computador. Da próxima vez que
-quiser **atualizar** o mapa (ruas novas, etc.), é só rodar o mesmo
-arquivo `.bat` de novo.
+10 a 40 minutos dependendo da internet/computador.
 
-### 2. Conferir se o servidor subiu
+## Passo 2 — Usar
 
-Abra no navegador: `http://localhost:8080` — deve aparecer a página do
-TileServer GL com um mapa de exemplo.
+Não precisa de mais nada! Ao abrir o SIG View (`iniciar.bat`, ou o
+`.exe`), se `backend/data/mapa.mbtiles` existir, o mapa já aparece com
+as ruas desenhadas — a configuração padrão já aponta pra esse arquivo.
 
-Se outras pessoas da empresa forem acessar esse mapa (não só quem gerou
-os tiles), troque `localhost` pelo **IP desse computador na rede** (ex:
-`http://192.168.1.50:8080`) — pergunte pro TI qual é, ou rode `ipconfig`
-no Prompt de Comando e procure "Endereço IPv4".
+Se você guardou o `.mbtiles` em outro lugar, aponte pra ele em
+**⚙ Configurações → Arquivo do mapa (.mbtiles)**.
 
-### 3. Apontar o SIG View para esse servidor
+## Levando pra outros computadores (o `.exe`)
 
-Na página `http://localhost:8080` que abriu no passo 2, tem uma lista de
-"styles" disponíveis — clique no mapa listado lá e copie a URL do
-`style.json` dele (geralmente algo como
-`http://localhost:8080/styles/basic-preview/style.json`, mas o nome pode
-variar conforme a versão do TileServer GL).
-
-Em `sig-view/backend/.env` (o arquivo criado pelo `instalar.bat`), ajuste:
-
-```
-SIGVIEW_TILE_SOURCE_URL=http://<IP-DO-SERVIDOR>:8080/styles/<nome-do-style>/style.json
-SIGVIEW_TILE_SOURCE_TYPE=vector
-```
-
-Troque `<IP-DO-SERVIDOR>` pelo IP do computador que está rodando o
-`gerar_e_subir_mapa.bat` (ou `localhost` se for o mesmo computador), e
-`<nome-do-style>` pelo que você copiou da página.
-
-Depois é só reabrir o `iniciar.bat` do SIG View — o mapa já aparece com
-as ruas desenhadas, e as camadas locais (bairros, pontos etc.) ficam por
-cima dele, exatamente como no Google Earth.
-
-## Deixando o servidor de tiles sempre ligado
-
-Para o mapa funcionar para todo mundo, o computador/servidor que rodou o
-`gerar_e_subir_mapa.bat` precisa continuar com o Docker Desktop aberto (o
-container `sigview-tileserver` fica rodando em segundo plano). O ideal é
-isso rodar numa máquina que fica ligada o dia todo (um servidor da
-empresa), não no notebook de alguém que desliga à noite.
+Ao gerar o `SigView.exe` (`gerar_executavel.bat`), copie também o
+`backend/data/mapa.mbtiles` pra perto do `.exe` (mesma pasta, dentro de
+uma subpasta `data/`) — assim o executável já sai com o mapa embutido,
+e quem receber só o `.exe` (sem o resto do projeto) já vê as ruas sem
+precisar gerar nada.
 
 ## Atualizando o mapa periodicamente
 
 Sempre que quiser atualizar as ruas (a prefeitura mudou algo, por
-exemplo), rode `gerar_e_subir_mapa.bat` de novo — ele baixa os dados mais
-recentes do OpenStreetMap e substitui o arquivo de tiles. Pode agendar
+exemplo), rode `gerar_e_subir_mapa.bat` de novo — ele baixa os dados
+mais recentes do OpenStreetMap e substitui `mapa.mbtiles`. Pode agendar
 isso (ex: uma vez por mês) usando o **Agendador de Tarefas do Windows**.
+
+## Alternativa: servidor de tiles externo (TileServer GL)
+
+Se preferir manter um servidor de tiles separado rodando na rede (por
+exemplo, pra vários SIG View apontarem pro mesmo lugar em vez de cada
+um ter sua própria cópia do `.mbtiles`), o `docker-compose.yml` deste
+projeto continua funcionando: suba o TileServer GL com o `.mbtiles`
+gerado, e aponte `SIGVIEW_TILE_SOURCE_URL` (ou o campo correspondente em
+⚙ Configurações) pra URL desse servidor. Isso é opcional — o caminho
+recomendado agora é o mapa embutido descrito acima.

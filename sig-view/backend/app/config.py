@@ -36,10 +36,19 @@ class Settings(BaseSettings):
     # Banco SQLite (FTS5) com o índice de endereços/CEP/bairros.
     geocoder_db: Path = BASE_DIR / "data" / "geocoder.db"
 
-    # URL do servidor de tiles (ruas) na rede local. Aceita:
-    #  - um style.json do MapLibre (tiles vetoriais, ex TileServer GL)
+    # Arquivo .mbtiles com o mapa de ruas (gerado por gerar_e_subir_mapa.bat
+    # ou qualquer outra ferramenta). Se existir nesse caminho, o próprio
+    # SIG View serve os tiles (rotas /tiles/*), sem precisar de nenhum
+    # servidor externo — é o que o "/tiles/style.json" (default de
+    # tile_source_url abaixo) usa.
+    mbtiles_path: Path = BASE_DIR / "data" / "mapa.mbtiles"
+
+    # URL do servidor de tiles (ruas). Por padrão aponta pro servidor
+    # embutido do próprio SIG View (usa o mbtiles_path acima). Também
+    # aceita um servidor externo na rede local, ex TileServer GL:
+    #  - um style.json do MapLibre (tiles vetoriais)
     #  - um template XYZ raster, ex: http://servidor:8080/tiles/{z}/{x}/{y}.png
-    tile_source_url: str = "http://localhost:8080/styles/ruas-sp/style.json"
+    tile_source_url: str = "/tiles/style.json"
     tile_source_type: str = "vector"  # "vector" (style.json) ou "raster" (template XYZ)
 
     # Visão inicial do mapa: estado de São Paulo.

@@ -1,8 +1,13 @@
-"""Busca de endereço, CEP e bairro usando um índice local SQLite (FTS5).
+"""Busca de endereço, CEP, bairro e imóvel usando um índice local SQLite
+(FTS5).
 
-O índice é construído pelo script `scripts/build_geocoder_index.py` a
-partir de uma base de dados de endereços (ex: GeoSampa, Correios, IBGE
-CNEFE). Tudo roda localmente — nenhuma chamada é feita à internet.
+O índice é construído por dois scripts, que gravam no mesmo banco:
+  - scripts/build_geocoder_index.py: endereços/CEP/bairro, a partir de
+    um CSV (ex: GeoSampa, Correios, IBGE CNEFE).
+  - scripts/indexar_camadas.py: dados vinculados aos polígonos das
+    camadas (ex: número de contribuinte, proprietário), a partir do
+    .geojson gerado por vincular_poligonos.py.
+Tudo roda localmente — nenhuma chamada é feita à internet.
 """
 from __future__ import annotations
 
@@ -20,11 +25,13 @@ _CEP_RE = re.compile(r"^\d{5}-?\d{3}$")
 @dataclass
 class SearchResult:
     id: int
-    tipo: str  # "endereco" | "bairro" | "cep"
+    tipo: str  # "endereco" | "bairro" | "cep" | "imovel" | ...
     logradouro: str | None
     bairro: str | None
     cidade: str | None
     cep: str | None
+    rotulo: str | None  # texto extra pesquisável (ex: "num. contrib. 1234 — João da Silva")
+    layer_id: str | None  # id da camada de origem, se veio de uma camada vinculada
     lat: float
     lon: float
 
@@ -36,6 +43,8 @@ class SearchResult:
             "bairro": self.bairro,
             "cidade": self.cidade,
             "cep": self.cep,
+            "rotulo": self.rotulo,
+            "layer_id": self.layer_id,
             "lat": self.lat,
             "lon": self.lon,
             "label": self.label,
@@ -45,6 +54,8 @@ class SearchResult:
     def label(self) -> str:
         partes = [p for p in (self.logradouro, self.bairro, self.cidade) if p]
         texto = ", ".join(partes)
+        if self.rotulo:
+            texto = f"{texto} — {self.rotulo}" if texto else self.rotulo
         if self.cep:
             texto = f"{texto} — CEP {self.cep}" if texto else f"CEP {self.cep}"
         return texto or "Resultado"
@@ -128,6 +139,7 @@ def _escape_fts(term: str) -> str:
 
 
 def _row_to_result(row: sqlite3.Row) -> SearchResult:
+    colunas = row.keys()
     return SearchResult(
         id=row["id"],
         tipo=row["tipo"],
@@ -135,6 +147,8 @@ def _row_to_result(row: sqlite3.Row) -> SearchResult:
         bairro=row["bairro"],
         cidade=row["cidade"],
         cep=row["cep"],
+        rotulo=row["rotulo"] if "rotulo" in colunas else None,
+        layer_id=row["layer_id"] if "layer_id" in colunas else None,
         lat=row["lat"],
         lon=row["lon"],
     )

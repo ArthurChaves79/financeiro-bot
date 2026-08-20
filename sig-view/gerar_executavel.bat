@@ -55,12 +55,26 @@ echo === Copiando o SigView.exe para a pasta principal ===
 copy /Y dist\SigView.exe "..\SigView.exe" >nul
 
 echo.
+echo === Levando o mapa (.mbtiles) junto, se ja tiver sido gerado ===
+if exist data\mapa.mbtiles (
+    if not exist "..\data" mkdir "..\data"
+    copy /Y data\mapa.mbtiles "..\data\mapa.mbtiles" >nul
+    echo Mapa copiado - o .exe ja sai com as ruas prontas.
+) else (
+    echo Nenhum mapa.mbtiles encontrado ainda - rode gerar_e_subir_mapa.bat
+    echo antes, se quiser que o .exe ja saia com o mapa de ruas.
+)
+
+echo.
 echo ==================================================
 echo  Pronto! O arquivo SigView.exe esta em:
 echo  %~dp0SigView.exe
 echo.
-echo  Copie esse arquivo para qualquer PC Windows e de
-echo  um duplo-clique - nao precisa instalar Python nem nada.
+echo  Para distribuir com o mapa embutido, copie SigView.exe
+echo  JUNTO com a pasta "data" (que fica do lado dele) para
+echo  o outro computador. Sem a pasta data, o programa ainda
+echo  funciona, so que sem o mapa de ruas ate voce configurar
+echo  um em Configuracoes.
 echo ==================================================
 echo.
 pause

@@ -1,7 +1,9 @@
 @echo off
 REM ============================================================
-REM  SIG View - gera o mapa de ruas de SP e sobe o servidor de tiles
-REM  Requer Docker Desktop instalado e aberto.
+REM  SIG View - gera o mapa de ruas de SP (.mbtiles)
+REM  Requer Docker Desktop instalado e aberto (so pra gerar o
+REM  arquivo - depois disso o proprio SIG View serve o mapa,
+REM  sem precisar de Docker rodando no dia a dia).
 REM  Rode de novo sempre que quiser atualizar o mapa.
 REM ============================================================
 title SIG View - Gerando mapa de ruas de SP...
@@ -47,15 +49,18 @@ if errorlevel 1 (
 )
 
 echo.
-echo === Subindo o servidor de tiles (TileServer GL) ===
-docker compose up -d
+echo === Colocando o mapa no lugar que o SIG View le ===
+if not exist backend\data mkdir backend\data
+copy /Y tiles\ruas-sp.mbtiles backend\data\mapa.mbtiles >nul
 
 echo.
 echo ==================================================
-echo  Pronto! Confira em http://localhost:8080
-echo  Depois configure SIGVIEW_TILE_SOURCE_URL no
-echo  backend\.env apontando para esse servidor
-echo  (veja CONFIGURAR_MAPA_LOCAL.md).
+echo  Pronto! O mapa foi salvo em backend\data\mapa.mbtiles
+echo  Nao precisa de Docker rodando no dia a dia - o
+echo  proprio SIG View serve esse arquivo (rota /tiles/*).
+echo  So reabra o iniciar.bat (ou gere o SigView.exe de novo,
+echo  copiando este arquivo pra perto dele) e o mapa ja
+echo  aparece com as ruas.
 echo ==================================================
 echo.
 pause

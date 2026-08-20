@@ -13,17 +13,22 @@ sig-view/
 ├── backend/            Python (FastAPI) — API + serve o frontend
 │   ├── app/
 │   │   ├── main.py          rotas da API e arquivos estáticos
-│   │   ├── search.py        busca por endereço/CEP/bairro (SQLite + FTS5)
-│   │   ├── layers.py        lista/serve as camadas (GeoJSON, KML, KMZ)
-│   │   ├── kml.py           conversão KML/KMZ -> GeoJSON
+│   │   ├── search.py        busca por endereço/CEP/bairro/imóvel (SQLite + FTS5)
+│   │   ├── layers.py        lista/serve as camadas (GeoJSON, KML, KMZ, NetworkLink)
+│   │   ├── kml.py           conversão KML/KMZ -> GeoJSON, estilos, NetworkLink
+│   │   ├── tiles.py         servidor de tiles embutido (lê direto de um .mbtiles)
+│   │   ├── geoutil.py       utilitário geométrico compartilhado (centroide aproximado)
 │   │   ├── settings_store.py persiste config feita pela tela de Configurações
 │   │   └── config.py        configuração (variáveis de ambiente)
 │   ├── run.py           ponto de entrada usado para gerar o SigView.exe
 │   ├── scripts/
 │   │   ├── build_geocoder_index.py   gera data/geocoder.db a partir de um CSV
+│   │   ├── indexar_camadas.py        indexa atributos de uma camada pra busca (ex: imóveis)
+│   │   ├── vincular_poligonos.py     vincula polígonos existentes a um banco
+│   │   ├── aplicar_correcoes_poligonos.py  aplica correções de geometria incrementalmente
 │   │   ├── seed_sample_data.py       dados de exemplo, só para testar a instalação
 │   │   └── update_layers_job.py      esqueleto do job de atualização periódica
-│   └── data/            geocoder.db + layers/* + config.json (gerado, não versionado)
+│   └── data/            geocoder.db + mapa.mbtiles + layers/* + config.json (gerado, não versionado)
 ├── frontend/            HTML + MapLibre GL JS (o "globo" propriamente dito)
 ├── instalar.bat / iniciar.bat     instalação/uso via scripts (Windows)
 ├── gerar_executavel.bat           gera o SigView.exe (Windows)
@@ -122,14 +127,25 @@ Configurações), ele tem prioridade sobre o `.env`.
 
 ## Tiles de ruas (o mapa base)
 
-Como você só precisa de ruas (sem terreno 3D), a rota recomendada é
-gerar um `.mbtiles` vetorial a partir do OpenStreetMap (com **Planetiler**)
-e servi-lo com o `docker-compose.yml` deste projeto (**TileServer GL**)
-numa máquina da rede local.
+O próprio SIG View serve o mapa sozinho, lendo direto de um arquivo
+`.mbtiles` (`app/tiles.py`) — **não precisa de Docker, TileServer GL nem
+nenhum servidor externo rodando**. É só ter o arquivo no caminho
+configurado (`SIGVIEW_MBTILES_PATH`, padrão `data/mapa.mbtiles`, ou via
+⚙ Configurações).
 
+Como você só precisa de ruas (sem terreno 3D), a rota recomendada pra
+gerar esse arquivo é a partir do OpenStreetMap com **Planetiler**
+(usa Docker só nessa etapa pontual de gerar o arquivo, não pra servir).
 Isso já está automatizado em `gerar_e_subir_mapa.bat` (Windows) — veja o
 passo a passo completo, sem precisar mexer em linha de comando, em
 [`CONFIGURAR_MAPA_LOCAL.md`](./CONFIGURAR_MAPA_LOCAL.md).
+
+O estilo servido em `/tiles/style.json` é gerado automaticamente
+(enxuto: ruas, água, quadras, limites administrativos — sem rótulos de
+texto nem ícones, pra não depender de fontes/sprites). Se quiser um
+servidor de tiles externo mesmo assim (ex: pra vários SIG View
+compartilharem um só `.mbtiles` pela rede), o `docker-compose.yml`
+(TileServer GL) continua disponível como alternativa.
 
 Para manter atualizado com mudanças da prefeitura, combine essa base OSM
 com camadas específicas do **GeoSampa** (dados abertos da Prefeitura de
@@ -152,6 +168,25 @@ sugeridas para montar esse CSV:
 - **GeoSampa** — logradouros/bairros da capital, dados abertos da prefeitura.
 - **IBGE CNEFE** — endereços de todo o estado.
 - **Correios** — base de CEPs, útil para o interior.
+
+### Buscar imóveis pelos dados vinculados aos polígonos
+
+Depois de rodar `vincular_poligonos.py` (veja mais abaixo), a camada
+resultante (ex: `imoveis.geojson`) já tem número de contribuinte,
+proprietário etc. como atributos dos polígonos — dá pra tornar isso
+pesquisável na mesma caixa de busca:
+
+```bash
+python scripts/indexar_camadas.py data/layers/imoveis.geojson \
+    --layer-id imoveis \
+    --rotulo numero_contribuinte proprietario
+```
+
+Depois disso, buscar "1234" ou "João da Silva" encontra o imóvel, voa
+pro polígono no mapa e **liga a camada automaticamente** (mesmo que
+estivesse desligada). Rodar de novo para o mesmo `--layer-id` substitui
+só os registros daquela camada, sem duplicar nem apagar os endereços já
+indexados por `build_geocoder_index.py`.
 
 ## Adicionando camadas
 
@@ -313,3 +348,5 @@ funciona.
 | `GET /api/layers/{id}` | GeoJSON de uma camada |
 | `GET /api/settings` | configurações editáveis atuais (pastas/URL) |
 | `PUT /api/settings` | atualiza e persiste as configurações |
+| `GET /tiles/style.json` | estilo do mapa embutido (lido do `.mbtiles`) |
+| `GET /tiles/{z}/{x}/{y}` | um tile do mapa embutido |

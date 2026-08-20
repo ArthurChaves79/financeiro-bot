@@ -30,12 +30,16 @@
         <label for="cfg-geocoder-db">Banco de busca (geocoder.db)</label>
         <input id="cfg-geocoder-db" type="text" placeholder="\\servidor\sigview\geocoder.db" />
 
+        <label for="cfg-mbtiles">Arquivo do mapa (.mbtiles)</label>
+        <input id="cfg-mbtiles" type="text" placeholder="C:\SIGView\data\mapa.mbtiles" />
+
         <label for="cfg-tile-url">URL do servidor de mapas (tiles)</label>
-        <input id="cfg-tile-url" type="text" placeholder="http://servidor:8080/styles/basic/style.json" />
+        <input id="cfg-tile-url" type="text" placeholder="/tiles/style.json" />
+        <p class="hint">Deixe <code>/tiles/style.json</code> para usar o mapa embutido (arquivo acima) — só troque se for usar um servidor de tiles externo (ex: TileServer GL).</p>
 
         <label for="cfg-tile-type">Tipo do mapa</label>
         <select id="cfg-tile-type">
-          <option value="vector">Vetorial (style.json — TileServer GL)</option>
+          <option value="vector">Vetorial (style.json)</option>
           <option value="raster">Raster (template XYZ de imagem)</option>
         </select>
 

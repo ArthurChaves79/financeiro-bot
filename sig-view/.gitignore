@@ -1,6 +1,8 @@
 backend/.env
 backend/data/config.json
 backend/data/geocoder.db
+backend/data/mapa.mbtiles
+data/mapa.mbtiles
 backend/data/_sample_enderecos.csv
 backend/data/layers/*.geojson
 !backend/data/layers/.gitkeep

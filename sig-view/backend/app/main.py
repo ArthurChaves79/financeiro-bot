@@ -13,13 +13,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from . import layers as layers_module
 from . import search as search_module
 from . import settings_store
+from . import tiles as tiles_module
 from .config import settings
 
 settings_store.load_overrides_into_settings()
@@ -82,6 +83,28 @@ def api_update_settings(data: dict) -> dict:
         return settings_store.update_settings(data)
     except settings_store.InvalidSettings as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# --- Servidor de tiles embutido (lê direto de um .mbtiles) ------------------
+
+@app.get("/tiles/style.json")
+def tiles_style() -> dict:
+    try:
+        return tiles_module.build_default_style()
+    except tiles_module.MbtilesUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/tiles/{z}/{x}/{y}")
+def tile(z: int, x: int, y: int) -> Response:
+    try:
+        data, content_type = tiles_module.get_tile(z, x, y)
+    except tiles_module.MbtilesUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except tiles_module.TileNotFound:
+        # Fora da área coberta pelo mapa — normal enquanto navega, não é erro.
+        return Response(status_code=204)
+    return Response(content=data, media_type=content_type)
 
 
 # --- Frontend estático (index.html, css, js) --------------------------------

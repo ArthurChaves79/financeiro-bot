@@ -21,6 +21,7 @@ CONFIG_FILE = BASE_DIR / "data" / "config.json"
 EDITABLE_FIELDS = {
     "layers_dir": Path,
     "geocoder_db": Path,
+    "mbtiles_path": Path,
     "tile_source_url": str,
     "tile_source_type": str,
 }
@@ -42,6 +43,7 @@ def get_editable_settings() -> dict[str, Any]:
     return {
         "layers_dir": str(settings.layers_dir),
         "geocoder_db": str(settings.geocoder_db),
+        "mbtiles_path": str(settings.mbtiles_path),
         "tile_source_url": settings.tile_source_url,
         "tile_source_type": settings.tile_source_type,
     }
@@ -60,7 +62,7 @@ def update_settings(data: dict[str, Any]) -> dict[str, Any]:
     if "tile_source_type" in data and data["tile_source_type"] not in ("vector", "raster"):
         raise InvalidSettings("tile_source_type deve ser 'vector' ou 'raster'")
 
-    for field in ("layers_dir", "geocoder_db"):
+    for field in ("layers_dir", "geocoder_db", "mbtiles_path"):
         if field in data and not str(data[field]).strip():
             raise InvalidSettings(f"{field} não pode ficar vazio")
 

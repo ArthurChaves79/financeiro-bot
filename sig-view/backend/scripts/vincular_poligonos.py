@@ -44,6 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import kml as kml_module  # noqa: E402
+from app.geoutil import centroide_aproximado as _centroide_aproximado  # noqa: E402
 
 
 def _normaliza_chave(valor: str | None) -> str | None:
@@ -102,37 +103,6 @@ def carregar_vinculos_manuais(path: Path | None) -> dict[str, str]:
             for row in reader
             if row.get(id_col, "").strip()
         }
-
-
-def _centroide_aproximado(geometry: dict) -> tuple[float, float] | None:
-    """Centroide aproximado (média dos vértices) — só para localizar
-    visualmente o polígono no mapa, não é o centroide geométrico exato."""
-
-    def pontos(coords, tipo):
-        if tipo == "Point":
-            yield coords
-        elif tipo in ("LineString", "MultiPoint"):
-            yield from coords
-        elif tipo in ("Polygon", "MultiLineString"):
-            for parte in coords:
-                yield from parte
-        elif tipo == "MultiPolygon":
-            for poligono in coords:
-                for anel in poligono:
-                    yield from anel
-
-    tipo = geometry.get("type")
-    coords = geometry.get("coordinates")
-    if tipo is None or coords is None:
-        return None
-    xs, ys, n = 0.0, 0.0, 0
-    for p in pontos(coords, tipo):
-        xs += p[0]
-        ys += p[1]
-        n += 1
-    if n == 0:
-        return None
-    return (xs / n, ys / n)
 
 
 def _identificador_poligono(feature: dict, indice: int) -> str:

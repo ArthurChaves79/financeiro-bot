@@ -68,7 +68,27 @@
       const [west, south, east, north] = config.bounds;
       map.fitBounds([[west, south], [east, north]], { padding: 20, duration: 0 });
     }
+
+    // Se o mapa de fundo não carregar (ex: nenhum .mbtiles configurado
+    // ainda), avisa em vez de deixar a tela em branco sem explicação.
+    map.on("error", (e) => {
+      const status = e?.error?.status;
+      if (status === 404) mostrarAvisoMapa();
+    });
+
     return map;
+  }
+
+  function mostrarAvisoMapa() {
+    if (document.getElementById("map-warning")) return; // já mostrado
+    const aviso = document.createElement("div");
+    aviso.id = "map-warning";
+    aviso.innerHTML = `
+      Mapa de ruas não configurado ainda.
+      Gere um <code>.mbtiles</code> (veja <code>gerar_e_subir_mapa.bat</code>) ou aponte
+      pra um servidor de tiles em <strong>⚙ Configurações</strong>.
+    `;
+    document.getElementById("map").appendChild(aviso);
   }
 
   // ---- Camadas ---------------------------------------------------------
@@ -114,6 +134,7 @@
       seta.className = "layer-toggle-arrow";
       seta.textContent = "▶";
       seta.setAttribute("aria-expanded", "false");
+      seta.title = "Expandir/recolher";
       linha.appendChild(seta);
 
       subLista = document.createElement("ul");
@@ -123,7 +144,6 @@
       seta.addEventListener("click", () => {
         const vaiAbrir = subLista.hidden;
         subLista.hidden = !vaiAbrir;
-        seta.textContent = vaiAbrir ? "▼" : "▶";
         seta.setAttribute("aria-expanded", String(vaiAbrir));
       });
     } else {
@@ -153,14 +173,24 @@
       linha.appendChild(checkbox);
 
       const label = document.createElement("label");
-      const sufixos = [];
-      if (camada.feature_count != null) sufixos.push(String(camada.feature_count));
-      if (camada.intervalo_atualizacao_segundos) sufixos.push("🔄");
-      label.textContent = no.nome + (sufixos.length ? ` (${sufixos.join(" ")})` : "");
-      if (camada.intervalo_atualizacao_segundos) {
-        label.title = `Atualiza sozinha a cada ${camada.intervalo_atualizacao_segundos}s (link de rede)`;
-      }
+      label.setAttribute("for", checkboxId);
+      label.textContent = no.nome;
       linha.appendChild(label);
+
+      if (camada.intervalo_atualizacao_segundos) {
+        const icone = document.createElement("span");
+        icone.className = "layer-refresh-icon";
+        icone.textContent = "🔄";
+        icone.title = `Atualiza sozinha a cada ${camada.intervalo_atualizacao_segundos}s (link de rede)`;
+        linha.appendChild(icone);
+      }
+
+      if (camada.feature_count != null) {
+        const badge = document.createElement("span");
+        badge.className = "layer-feature-count";
+        badge.textContent = camada.feature_count;
+        linha.appendChild(badge);
+      }
 
       checkbox.addEventListener("change", () => toggleLayer(camada, checkbox.checked));
     } else {
@@ -250,12 +280,10 @@
         const feature = e.features[0];
         const props = feature.properties || {};
         const entradas = Object.entries(props).filter(([k]) => !k.startsWith("_"));
-        const html = entradas.length
-          ? entradas.map(([k, v]) => `<p><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(v))}</p>`).join("")
-          : "<p><em>Sem atributos</em></p>";
-        new maplibregl.Popup()
+        const titulo = props.nome || camada.nome || layerId;
+        new maplibregl.Popup({ maxWidth: "320px" })
           .setLngLat(e.lngLat)
-          .setHTML(`<div class="sigview-popup"><h3>${escapeHtml(props.nome || layerId)}</h3>${html}</div>`)
+          .setHTML(buildPopupHtml(titulo, cor, entradas))
           .addTo(state.map);
       });
       state.map.on("mouseenter", id, () => { state.map.getCanvas().style.cursor = "pointer"; });
@@ -358,12 +386,30 @@
     function selectResult(result) {
       hideResults();
       input.value = result.label;
-      state.map.flyTo({ center: [result.lon, result.lat], zoom: 16 });
+      state.map.flyTo({ center: [result.lon, result.lat], zoom: 17 });
       if (state.marker) state.marker.remove();
+      const entradasResultado = [
+        ["Tipo", result.tipo],
+        ["Logradouro", result.logradouro],
+        ["Bairro", result.bairro],
+        ["Cidade", result.cidade],
+        ["CEP", result.cep],
+        ["Detalhes", result.rotulo],
+      ].filter(([, v]) => v);
       state.marker = new maplibregl.Marker({ color: "#3fa9f5" })
         .setLngLat([result.lon, result.lat])
-        .setPopup(new maplibregl.Popup().setHTML(`<div class="sigview-popup"><h3>${escapeHtml(result.label)}</h3></div>`))
+        .setPopup(new maplibregl.Popup({ maxWidth: "320px" }).setHTML(buildPopupHtml(result.label, "#3fa9f5", entradasResultado)))
         .addTo(state.map);
+
+      // Resultado veio de uma camada vinculada (ex: um imóvel) — liga a
+      // camada automaticamente, senão o polígono não aparece no mapa.
+      if (result.layer_id) {
+        const checkbox = document.getElementById(`layer-${result.layer_id}`);
+        if (checkbox && !checkbox.checked) {
+          checkbox.checked = true;
+          checkbox.dispatchEvent(new Event("change"));
+        }
+      }
     }
   }
 
@@ -379,6 +425,7 @@
     const fields = {
       layers_dir: document.getElementById("cfg-layers-dir"),
       geocoder_db: document.getElementById("cfg-geocoder-db"),
+      mbtiles_path: document.getElementById("cfg-mbtiles"),
       tile_source_url: document.getElementById("cfg-tile-url"),
       tile_source_type: document.getElementById("cfg-tile-type"),
     };
@@ -435,6 +482,26 @@
       errorEl.textContent = msg;
       errorEl.hidden = false;
     }
+  }
+
+  // Popup padrão usado tanto no clique de uma feature quanto num
+  // resultado de busca — cabeçalho com a cor da camada + tabela de
+  // atributos, combinando com o tema escuro do resto do app.
+  function buildPopupHtml(titulo, cor, entradas) {
+    const corpo = entradas.length
+      ? `<table class="sigview-popup-table">${entradas
+          .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`)
+          .join("")}</table>`
+      : `<div class="sigview-popup-empty">Sem atributos</div>`;
+    return `
+      <div class="sigview-popup">
+        <div class="sigview-popup-header">
+          <span class="layer-swatch" style="background:${escapeHtml(cor || "#3fa9f5")}"></span>
+          <h3 title="${escapeHtml(titulo)}">${escapeHtml(titulo)}</h3>
+        </div>
+        <div class="sigview-popup-body">${corpo}</div>
+      </div>
+    `;
   }
 
   function escapeHtml(str) {

@@ -137,10 +137,11 @@ def _nome_arquivo_exibicao(stem: str) -> str:
     return stem.replace("_", " ").replace("-", " ").title()
 
 
-def _layer_info(layer_id: str, geojson: dict, formato: str, mtime: float, intervalo: float | None) -> dict:
+def _layer_info(layer_id: str, nome: str, geojson: dict, formato: str, mtime: float, intervalo: float | None) -> dict:
     features = geojson.get("features", [])
     info = {
         "id": layer_id,
+        "nome": nome,
         "formato": formato,
         "feature_count": len(features),
         "geometry_type": features[0].get("geometry", {}).get("type") if features else None,
@@ -186,7 +187,7 @@ def _montar_arvore(
         layer_id = _layer_id(id_base, caminho)
         nome = caminho[-1] if caminho else nome_raiz
         geojson = por_caminho.get(caminho)
-        camada = _layer_info(layer_id, geojson, formato, mtime, intervalo_herdado) if geojson is not None else None
+        camada = _layer_info(layer_id, nome, geojson, formato, mtime, intervalo_herdado) if geojson is not None else None
         criancas = [construir_no(filho) for filho in filhos_de.get(caminho, [])]
 
         for link in network_links.get(caminho, []):

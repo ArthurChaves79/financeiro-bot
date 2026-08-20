@@ -31,40 +31,63 @@ DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "geocoder.db"
 
 REQUIRED_COLUMNS = ["tipo", "logradouro", "bairro", "cidade", "cep", "lat", "lon"]
 
+# Schema compartilhado com scripts/indexar_camadas.py (que grava no
+# mesmo banco os dados vinculados às camadas/polígonos) — por isso é
+# todo "IF NOT EXISTS", idempotente independente de qual script roda
+# primeiro.
 SCHEMA = """
-CREATE TABLE enderecos (
+CREATE TABLE IF NOT EXISTS enderecos (
     id INTEGER PRIMARY KEY,
     tipo TEXT NOT NULL,
     logradouro TEXT,
     bairro TEXT,
     cidade TEXT,
     cep TEXT,
+    rotulo TEXT,     -- texto extra pesquisável (ex: "num. contrib. 1234 — João da Silva")
+    layer_id TEXT,   -- id da camada de origem, se este registro veio de uma camada vinculada
     lat REAL NOT NULL,
     lon REAL NOT NULL
 );
 
-CREATE INDEX idx_enderecos_cep ON enderecos(cep);
+CREATE INDEX IF NOT EXISTS idx_enderecos_cep ON enderecos(cep);
+CREATE INDEX IF NOT EXISTS idx_enderecos_layer_id ON enderecos(layer_id);
 
-CREATE VIRTUAL TABLE enderecos_fts USING fts5(
-    logradouro, bairro, cidade,
+CREATE VIRTUAL TABLE IF NOT EXISTS enderecos_fts USING fts5(
+    logradouro, bairro, cidade, rotulo,
     content='enderecos', content_rowid='id',
     tokenize = "unicode61 remove_diacritics 2"
 );
 
-CREATE TRIGGER enderecos_ai AFTER INSERT ON enderecos BEGIN
-    INSERT INTO enderecos_fts(rowid, logradouro, bairro, cidade)
-    VALUES (new.id, new.logradouro, new.bairro, new.cidade);
+CREATE TRIGGER IF NOT EXISTS enderecos_ai AFTER INSERT ON enderecos BEGIN
+    INSERT INTO enderecos_fts(rowid, logradouro, bairro, cidade, rotulo)
+    VALUES (new.id, new.logradouro, new.bairro, new.cidade, new.rotulo);
 END;
 """
 
 
-def build(csv_path: Path, db_path: Path, column_map: dict[str, str]) -> int:
+def ensure_schema(db_path: Path) -> sqlite3.Connection:
+    """Abre (criando se preciso) o banco com o schema compartilhado, sem
+    apagar dados que já existam — usado por indexar_camadas.py, que
+    complementa o índice em vez de reconstruí-lo do zero."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.executescript(SCHEMA)
+    return conn
+
+
+def rebuild_fts(conn: sqlite3.Connection) -> None:
+    conn.execute("INSERT INTO enderecos_fts(enderecos_fts) VALUES('rebuild')")
+    conn.commit()
+
+
+def build(csv_path: Path, db_path: Path, column_map: dict[str, str]) -> int:
+    """Reconstrói o índice de endereços DO ZERO (apaga o banco anterior,
+    inclusive dados de camadas indexados por indexar_camadas.py — rode-o
+    de novo depois se precisar deles de volta)."""
     if db_path.exists():
         db_path.unlink()
 
-    conn = sqlite3.connect(db_path)
-    conn.executescript(SCHEMA)
+    conn = ensure_schema(db_path)
 
     count = 0
     with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
@@ -107,8 +130,7 @@ def build(csv_path: Path, db_path: Path, column_map: dict[str, str]) -> int:
         count = len(rows)
 
     conn.commit()
-    conn.execute("INSERT INTO enderecos_fts(enderecos_fts) VALUES('rebuild')")
-    conn.commit()
+    rebuild_fts(conn)
     conn.close()
     return count
 

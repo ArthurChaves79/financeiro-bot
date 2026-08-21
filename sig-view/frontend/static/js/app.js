@@ -64,6 +64,15 @@
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 
+    // Em algumas janelas embutidas (ex: pywebview), o mapa às vezes é
+    // criado antes do container ter o tamanho final, e fica com um
+    // canvas de tamanho errado/zero até algo forçar um resize. Isso
+    // força de qualquer forma, mais de uma vez, pra cobrir esse caso.
+    window.addEventListener("resize", () => map.resize());
+    for (const atraso of [100, 500, 1500]) {
+      setTimeout(() => map.resize(), atraso);
+    }
+
     if (config.bounds) {
       const [west, south, east, north] = config.bounds;
       map.fitBounds([[west, south], [east, north]], { padding: 20, duration: 0 });

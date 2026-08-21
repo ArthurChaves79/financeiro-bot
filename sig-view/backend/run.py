@@ -38,7 +38,10 @@ def main() -> None:
 
     if webview is not None:
         webview.create_window("SIG View", url, width=1366, height=850, min_size=(900, 600))
-        webview.start()  # bloqueia até a janela ser fechada; o programa encerra junto
+        # debug=True habilita clicar com o botao direito -> "Inspecionar"
+        # dentro da propria janela do programa (equivalente ao F12 do
+        # navegador) - util pra diagnosticar problemas de carregamento.
+        webview.start(debug=True)  # bloqueia até a janela ser fechada; o programa encerra junto
     else:
         webbrowser.open(url)
         # sem janela própria, o processo precisa continuar vivo servindo o

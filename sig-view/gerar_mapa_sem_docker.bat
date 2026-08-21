@@ -94,7 +94,8 @@ echo.
 "%JAVA_CMD%" -Xmx2g -jar planetiler.jar ^
   --osm-path="%OSM_FILE%" ^
   --bounds=-53.11,-25.31,-44.16,-19.78 ^
-  --output=tiles\ruas-sp.mbtiles
+  --output=tiles\ruas-sp.mbtiles ^
+  --force
 
 if errorlevel 1 (
     echo.

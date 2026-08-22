@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import gzip
 import sqlite3
+import threading
+from pathlib import Path
 
 from .config import settings
 
@@ -34,61 +36,87 @@ class TileNotFound(RuntimeError):
     pass
 
 
-def _connect() -> sqlite3.Connection:
+# FastAPI roda cada requisição síncrona numa thread de um pool — em vez
+# de abrir uma conexão SQLite nova a cada tile (caro, principalmente com
+# antivírus vigiando cada abertura de um arquivo de centenas de MB),
+# cada thread mantém sua própria conexão aberta e reaproveita entre
+# requisições. Reabre sozinho se o caminho configurado mudar (⚙ Configurações).
+_local = threading.local()
+
+# Metadados não mudam com o arquivo parado — cacheia por (caminho,
+# data de modificação), assim continua correto se o .mbtiles for
+# regenerado enquanto o programa está rodando.
+_metadata_cache: tuple[Path, float, dict[str, str]] | None = None
+
+
+def _get_connection() -> sqlite3.Connection:
     path = settings.mbtiles_path
     if not path.exists():
         raise MbtilesUnavailable(
             f"Arquivo de mapa não encontrado: {path}. "
             "Gere um .mbtiles (veja gerar_e_subir_mapa.bat) e configure o caminho em ⚙ Configurações."
         )
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+
+    conn: sqlite3.Connection | None = getattr(_local, "conn", None)
+    conn_path: Path | None = getattr(_local, "conn_path", None)
+    if conn is not None and conn_path == path:
+        return conn
+
+    if conn is not None:
+        conn.close()
+
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    _local.conn = conn
+    _local.conn_path = path
     return conn
 
 
-def _metadata(conn: sqlite3.Connection) -> dict[str, str]:
+def _metadata(conn: sqlite3.Connection, path: Path) -> dict[str, str]:
+    global _metadata_cache
+    mtime = path.stat().st_mtime
+    if _metadata_cache is not None and _metadata_cache[0] == path and _metadata_cache[1] == mtime:
+        return _metadata_cache[2]
+
     try:
         rows = conn.execute("SELECT name, value FROM metadata").fetchall()
     except sqlite3.OperationalError as exc:
         raise MbtilesUnavailable(f"Arquivo .mbtiles inválido (sem tabela metadata): {exc}") from exc
-    return {r["name"]: r["value"] for r in rows}
+
+    meta = {r["name"]: r["value"] for r in rows}
+    _metadata_cache = (path, mtime, meta)
+    return meta
 
 
 def get_metadata() -> dict[str, str]:
-    conn = _connect()
-    try:
-        return _metadata(conn)
-    finally:
-        conn.close()
+    conn = _get_connection()
+    return _metadata(conn, settings.mbtiles_path)
 
 
 def get_tile(z: int, x: int, y: int) -> tuple[bytes, str]:
-    """Devolve (bytes_do_tile_ja_descomprimido, content_type)."""
-    conn = _connect()
-    try:
-        meta = _metadata(conn)
-        formato = (meta.get("format") or "pbf").lower()
-        content_type = _FORMATO_CONTENT_TYPE.get(formato, "application/octet-stream")
+    """Devolve (bytes_do_tile_já_descomprimido, content_type)."""
+    conn = _get_connection()
+    meta = _metadata(conn, settings.mbtiles_path)
+    formato = (meta.get("format") or "pbf").lower()
+    content_type = _FORMATO_CONTENT_TYPE.get(formato, "application/octet-stream")
 
-        # .mbtiles usa o esquema TMS (linha 0 = sul do mundo), mas o
-        # padrão XYZ usado pelo MapLibre tem linha 0 = norte -> inverte.
-        y_tms = (2**z - 1) - y
-        if y_tms < 0:
-            raise TileNotFound(f"{z}/{x}/{y}")
+    # .mbtiles usa o esquema TMS (linha 0 = sul do mundo), mas o
+    # padrão XYZ usado pelo MapLibre tem linha 0 = norte -> inverte.
+    y_tms = (2**z - 1) - y
+    if y_tms < 0:
+        raise TileNotFound(f"{z}/{x}/{y}")
 
-        row = conn.execute(
-            "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
-            (z, x, y_tms),
-        ).fetchone()
-        if row is None:
-            raise TileNotFound(f"{z}/{x}/{y}")
+    row = conn.execute(
+        "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?",
+        (z, x, y_tms),
+    ).fetchone()
+    if row is None:
+        raise TileNotFound(f"{z}/{x}/{y}")
 
-        data = bytes(row["tile_data"])
-        if data[:2] == b"\x1f\x8b":  # gzip magic bytes — comum em tiles vetoriais (.pbf)
-            data = gzip.decompress(data)
-        return data, content_type
-    finally:
-        conn.close()
+    data = bytes(row["tile_data"])
+    if data[:2] == b"\x1f\x8b":  # gzip magic bytes — comum em tiles vetoriais (.pbf)
+        data = gzip.decompress(data)
+    return data, content_type
 
 
 def _bounds_center(meta: dict[str, str]) -> tuple[list[float] | None, list[float] | None]:

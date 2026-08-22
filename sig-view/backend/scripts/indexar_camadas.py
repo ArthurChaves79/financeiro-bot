@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
-"""Indexa os atributos de uma camada (ex: o imoveis.geojson gerado por
-vincular_poligonos.py) no mesmo índice de busca usado pra endereço/CEP/
-bairro — assim dá pra digitar um número de contribuinte, proprietário
-etc. na caixa de busca e o mapa vai direto pro polígono.
+"""Indexa os atributos de uma camada (.geojson, .kml ou .kmz — ex: o
+imoveis.geojson gerado por vincular_poligonos.py, ou um KML exportado
+direto do seu editor de polígonos com os atributos já preenchidos) no
+mesmo índice de busca usado pra endereço/CEP/bairro — assim dá pra
+digitar um Setor-Quadra-Lote, Matrícula, Transcrição etc. na caixa de
+busca e o mapa vai direto pro polígono.
 
 Complementa o índice existente (não apaga o que já tem de endereços);
 rodar de novo para a mesma --layer-id substitui só os registros dessa
 camada, sem duplicar.
 
+Antes de rodar, use scripts/ver_propriedades.py pra descobrir os nomes
+exatos dos campos na sua camada.
+
 Uso:
-    python scripts/indexar_camadas.py data/layers/imoveis.geojson \\
-        --layer-id imoveis \\
-        --rotulo numero_contribuinte proprietario \\
+    python scripts/indexar_camadas.py data/layers/Geo4RI.kml \\
+        --layer-id Geo4RI \\
+        --rotulo setor quadra lote matricula transcricao \\
+        --logradouro endereco \\
         --tipo imovel
 
-`--layer-id` precisa ser o mesmo id que a camada tem no SIG View — pra
-um arquivo simples direto em data/layers (sem pastas dentro), é o nome
-do arquivo sem extensão (ex: "imoveis.geojson" -> "imoveis").
+`--layer-id` é só um rótulo pra saber de onde veio o resultado — não
+precisa ser idêntico ao id exato da camada no painel (que pode ter
+sufixos de pasta); usar o nome do arquivo já é suficiente.
 
 `--rotulo` lista as propriedades da feature que devem virar o texto
-pesquisável (concatenadas), ex: número de contribuinte + proprietário.
+pesquisável (concatenadas), ex: setor + quadra + lote + matrícula.
 """
 from __future__ import annotations
 
@@ -29,14 +35,36 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app import kml as kml_module  # noqa: E402
 from app.geoutil import centroide_aproximado  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_geocoder_index import DEFAULT_DB, ensure_schema, rebuild_fts  # noqa: E402
 
 
+def _carregar_features(path: Path) -> list[dict]:
+    """Lê .geojson, .kml ou .kmz e devolve a lista de features (achatando
+    pastas do KML, já que pra indexar busca não importa em qual pasta a
+    feature estava)."""
+    suffix = path.suffix.lower()
+    if suffix == ".geojson":
+        geojson = json.loads(path.read_text(encoding="utf-8"))
+        return geojson.get("features", [])
+    if suffix == ".kml":
+        grupos, _ = kml_module.parse_kml_full(path.read_bytes())
+    elif suffix == ".kmz":
+        grupos, _ = kml_module.parse_kmz_full(path.read_bytes())
+    else:
+        raise SystemExit(f"Formato não suportado: {suffix} (use .geojson, .kml ou .kmz)")
+
+    features = []
+    for _caminho, geojson in grupos:
+        features.extend(geojson.get("features", []))
+    return features
+
+
 def indexar(
-    geojson_path: Path,
+    camada_path: Path,
     db_path: Path,
     layer_id: str,
     campos_rotulo: list[str],
@@ -45,7 +73,7 @@ def indexar(
     campo_bairro: str | None,
     campo_cidade: str | None,
 ) -> tuple[int, int]:
-    geojson = json.loads(geojson_path.read_text(encoding="utf-8"))
+    features = _carregar_features(camada_path)
     conn = ensure_schema(db_path)
 
     conn.execute("DELETE FROM enderecos WHERE layer_id = ?", (layer_id,))
@@ -53,7 +81,7 @@ def indexar(
     inseridos = 0
     ignorados = 0
     linhas = []
-    for feature in geojson.get("features", []):
+    for feature in features:
         geometry = feature.get("geometry") or {}
         centro = centroide_aproximado(geometry)
         if centro is None:
@@ -94,7 +122,7 @@ def indexar(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("geojson_path", type=Path, help="Camada .geojson já vinculada (ex: data/layers/imoveis.geojson)")
+    parser.add_argument("camada_path", type=Path, help="Camada .geojson, .kml ou .kmz (ex: data/layers/Geo4RI.kml)")
     parser.add_argument("--layer-id", required=True, help="Id da camada no SIG View (geralmente o nome do arquivo sem extensão)")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="Caminho do banco de busca")
     parser.add_argument("--tipo", default="imovel", help="Valor da coluna 'tipo' pra estes registros (padrão: imovel)")
@@ -110,11 +138,11 @@ def main() -> None:
     parser.add_argument("--cidade", default=None, metavar="PROPRIEDADE", help="Propriedade a usar como cidade, se existir")
     args = parser.parse_args()
 
-    if not args.geojson_path.exists():
-        sys.exit(f"Arquivo não encontrado: {args.geojson_path}")
+    if not args.camada_path.exists():
+        sys.exit(f"Arquivo não encontrado: {args.camada_path}")
 
     inseridos, ignorados = indexar(
-        args.geojson_path,
+        args.camada_path,
         args.db,
         args.layer_id,
         args.rotulo,

@@ -342,44 +342,78 @@ def _resolver_networklink(link: dict, base_dir: Path, visitados: frozenset[Path]
     return no
 
 
-def list_layers() -> list[dict]:
-    """Devolve a árvore de camadas disponíveis: um nó por arquivo, cada
-    um podendo ter uma camada própria (```"camada"```) e/ou subpastas
-    (```"criancas"```) — igual ao painel "Locais" do Google Earth.
-    <NetworkLink> são resolvidos recursivamente e entram na árvore no
-    lugar onde apareceram."""
-    layers_dir = settings.layers_dir
-    if not layers_dir.exists():
-        return []
+def _processar_arquivo_da_camada(path: Path) -> dict | None:
+    """Processa um arquivo de camada (achado na pasta ou em subpastas) e
+    devolve o nó de árvore correspondente — mesma lógica usada tanto pra
+    arquivos na pasta de camadas quanto pra arquivos apontados por
+    <NetworkLink> (por isso o id usa o caminho absoluto codificado, do
+    mesmo jeito nos dois casos)."""
+    try:
+        grupos, network_links = _grupos_e_links_do_arquivo(path)
+    except (json.JSONDecodeError, OSError, kml_module.KmlParseError, LayerReadError):
+        return None
 
-    result = []
+    return _montar_arvore(
+        id_base=_encode_link_id(path.resolve()),
+        nome_raiz=_nome_arquivo_exibicao(path.stem),
+        formato=path.suffix.lstrip(".").lower(),
+        mtime=path.stat().st_mtime,
+        grupos=grupos,
+        network_links=network_links,
+        base_dir=path.parent,
+        visitados=frozenset({path.resolve()}),
+        intervalo_herdado=None,
+    )
+
+
+def _construir_arvore_pasta(diretorio: Path) -> list[dict]:
+    """Monta a lista de nós (arquivos e subpastas) dentro de uma pasta —
+    subpastas de verdade no disco viram pastas no painel, do mesmo jeito
+    que você organizaria qualquer arquivo no Windows. Assim dá pra
+    manter camadas GeoJSON organizadas em grupos, já que o GeoJSON (ao
+    contrário do KML) não tem esse conceito de pasta embutido."""
+    nos: list[dict] = []
     stems_vistos: set[str] = set()
-    for path in sorted(layers_dir.iterdir()):
-        if not path.is_file() or path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
+
+    try:
+        entradas = sorted(diretorio.iterdir(), key=lambda p: p.name.lower())
+    except OSError:
+        return nos
+
+    for entrada in entradas:
+        if entrada.name.startswith("."):
+            continue  # pastas/arquivos ocultos (ex: .sigview_cache)
+
+        if entrada.is_dir():
+            criancas = _construir_arvore_pasta(entrada)
+            if criancas:
+                nos.append({"nome": entrada.name, "camada": None, "criancas": criancas})
             continue
-        stem = path.stem
+
+        if entrada.suffix.lower() not in _SUPPORTED_EXTENSIONS:
+            continue
+        stem = entrada.stem
         if stem in stems_vistos:
             continue  # evita duplicar se existir ex: bairros.geojson E bairros.kml
         stems_vistos.add(stem)
 
-        try:
-            grupos, network_links = _grupos_e_links_do_arquivo(path)
-        except (json.JSONDecodeError, OSError, kml_module.KmlParseError, LayerReadError):
-            continue
+        no = _processar_arquivo_da_camada(entrada)
+        if no is not None:
+            nos.append(no)
 
-        no = _montar_arvore(
-            id_base=stem,
-            nome_raiz=_nome_arquivo_exibicao(stem),
-            formato=path.suffix.lstrip(".").lower(),
-            mtime=path.stat().st_mtime,
-            grupos=grupos,
-            network_links=network_links,
-            base_dir=path.parent,
-            visitados=frozenset({path.resolve()}),
-            intervalo_herdado=None,
-        )
-        result.append(no)
-    return result
+    return nos
+
+
+def list_layers() -> list[dict]:
+    """Devolve a árvore de camadas disponíveis: subpastas de verdade no
+    disco viram pastas no painel, e cada arquivo pode ter sua própria
+    camada e/ou sub-pastas internas do KML — igual ao painel "Locais" do
+    Google Earth. <NetworkLink> são resolvidos recursivamente e entram
+    na árvore no lugar onde apareceram."""
+    layers_dir = settings.layers_dir
+    if not layers_dir.exists():
+        return []
+    return _construir_arvore_pasta(layers_dir)
 
 
 def _resolver_grupo(grupos: list[tuple[tuple[str, ...], dict]], slugs_pedidos: list[str], layer_id: str) -> dict:

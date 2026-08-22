@@ -3,10 +3,12 @@
 Google Earth e quer migrar os dados existentes pro formato mais simples
 e rápido que o SIG View usa.
 
-Por padrão, cada <Folder> do KML vira um arquivo .geojson separado
-(mesmo comportamento de camadas independentes que o KML já tinha no
-painel) — assim você não perde a organização em grupos. Use
---tudo-junto se preferir um único arquivo com tudo misturado.
+Por padrão, cada <Folder> do KML vira uma SUBPASTA de verdade em disco
+(ex: "Encerrados/2020/Geo4RI.geojson"), espelhando a mesma organização
+em pastas que você já tinha no KML — o SIG View mostra pastas de disco
+no painel do mesmo jeito que mostrava as <Folder> do KML, então você
+não perde a árvore organizada ao converter. Use --tudo-junto se
+preferir um único arquivo com tudo misturado, sem pastas.
 
 Uso:
     python scripts/converter_kml_para_geojson.py data/layers/Geo4RI.kml
@@ -18,18 +20,20 @@ import argparse
 import json
 import re
 import sys
-import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import kml as kml_module  # noqa: E402
 
+_CARACTERES_INVALIDOS_WINDOWS = re.compile(r'[<>:"/\\|?*]')
 
-def _slug(texto: str) -> str:
-    sem_acento = unicodedata.normalize("NFKD", texto)
-    sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
-    slug = re.sub(r"[^a-zA-Z0-9]+", "_", sem_acento).strip("_")
-    return slug or "camada"
+
+def _nome_pasta_seguro(nome: str) -> str:
+    """Remove só os caracteres que o Windows não aceita em nome de
+    pasta/arquivo — mantém o nome legível (acentos, espaços etc.),
+    diferente de um "slug" agressivo."""
+    limpo = _CARACTERES_INVALIDOS_WINDOWS.sub("_", nome).strip().rstrip(".")
+    return limpo or "pasta"
 
 
 def main() -> None:
@@ -80,15 +84,20 @@ def main() -> None:
         features = geojson.get("features", [])
         if not features:
             continue
-        sufixo = "_" + "_".join(_slug(p) for p in caminho) if caminho else ""
-        destino = pasta_saida / f"{base_nome}{sufixo}.geojson"
+
+        destino_dir = pasta_saida
+        for parte in caminho:
+            destino_dir = destino_dir / _nome_pasta_seguro(parte)
+        destino_dir.mkdir(parents=True, exist_ok=True)
+
+        destino = destino_dir / f"{base_nome}.geojson"
         destino.write_text(json.dumps(geojson, ensure_ascii=False), encoding="utf-8")
         nome_pasta = " / ".join(caminho) if caminho else "(sem pasta)"
-        print(f"Gerado {destino.name} — {nome_pasta} — {len(features)} feature(s)")
+        print(f"Gerado {destino.relative_to(pasta_saida)} — {nome_pasta} — {len(features)} feature(s)")
         gerados += 1
 
-    print(f"\n{gerados} arquivo(s) .geojson gerado(s) em {pasta_saida}")
-    print("Cada um vira uma camada própria no painel — pode apagar o .kml original quando conferir que está tudo certo.")
+    print(f"\n{gerados} arquivo(s) .geojson gerado(s) em {pasta_saida}, organizados nas mesmas pastas do KML.")
+    print("Pode apagar o .kml original quando conferir que está tudo certo no painel.")
 
 
 if __name__ == "__main__":

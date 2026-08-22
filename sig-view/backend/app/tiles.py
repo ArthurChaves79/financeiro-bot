@@ -113,32 +113,40 @@ def _bounds_center(meta: dict[str, str]) -> tuple[list[float] | None, list[float
     return bounds, center
 
 
-def build_default_style() -> dict:
+def build_default_style(base_url: str) -> dict:
     """Monta um style.json básico (MapLibre) pro conteúdo do .mbtiles
     configurado: raster vira um estilo raster simples; vetorial (o caso
     comum, gerado pelo Planetiler no esquema OpenMapTiles) vira um
     estilo enxuto com ruas, água, quadras e limites administrativos —
     sem rótulos de texto nem ícones (dispensa fontes/sprites, mantendo
-    tudo 100% autocontido)."""
+    tudo 100% autocontido).
+
+    `base_url` (ex: "http://localhost:8000/") é usado pra montar a URL
+    dos tiles **completa** (com http://host:porta), não só o caminho
+    relativo — janelas embutidas tipo pywebview/WebView2 processam os
+    tiles em Web Workers que, em alguns casos, não conseguem resolver
+    URLs relativas ("/tiles/{z}/{x}/{y}") e falham silenciosamente.
+    """
     meta = get_metadata()
     formato = (meta.get("format") or "pbf").lower()
     bounds, center = _bounds_center(meta)
     minzoom = int(float(meta["minzoom"])) if meta.get("minzoom") else 0
     maxzoom = int(float(meta["maxzoom"])) if meta.get("maxzoom") else 14
+    tiles_url = base_url.rstrip("/") + "/tiles/{z}/{x}/{y}"
 
     if formato in ("png", "jpg", "jpeg", "webp"):
-        return _raster_style(bounds, center, minzoom, maxzoom)
-    return _vector_style(bounds, center, minzoom, maxzoom)
+        return _raster_style(tiles_url, bounds, center, minzoom, maxzoom)
+    return _vector_style(tiles_url, bounds, center, minzoom, maxzoom)
 
 
-def _raster_style(bounds, center, minzoom, maxzoom) -> dict:
+def _raster_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
     style = {
         "version": 8,
         "name": "SIG View (raster local)",
         "sources": {
             "base": {
                 "type": "raster",
-                "tiles": ["/tiles/{z}/{x}/{y}"],
+                "tiles": [tiles_url],
                 "tileSize": 256,
                 "minzoom": minzoom,
                 "maxzoom": maxzoom,
@@ -156,10 +164,10 @@ def _raster_style(bounds, center, minzoom, maxzoom) -> dict:
     return style
 
 
-def _vector_style(bounds, center, minzoom, maxzoom) -> dict:
+def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
     source = {
         "type": "vector",
-        "tiles": ["/tiles/{z}/{x}/{y}"],
+        "tiles": [tiles_url],
         "minzoom": minzoom,
         "maxzoom": maxzoom,
     }

@@ -13,7 +13,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -88,9 +88,9 @@ def api_update_settings(data: dict) -> dict:
 # --- Servidor de tiles embutido (lê direto de um .mbtiles) ------------------
 
 @app.get("/tiles/style.json")
-def tiles_style() -> dict:
+def tiles_style(request: Request) -> dict:
     try:
-        return tiles_module.build_default_style()
+        return tiles_module.build_default_style(str(request.base_url))
     except tiles_module.MbtilesUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

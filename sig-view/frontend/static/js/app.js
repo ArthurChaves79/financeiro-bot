@@ -32,6 +32,11 @@
     const config = await fetchJSON(API.config);
     state.map = createMap(config);
     state.map.on("load", async () => {
+      console.debug(
+        "[SIG View] mapa carregado — zoom:", state.map.getZoom(),
+        "centro:", state.map.getCenter(),
+        "fontes:", Object.keys(state.map.getStyle().sources)
+      );
       await loadLayersPanel();
     });
     setupSearch();
@@ -81,8 +86,16 @@
     // Se o mapa de fundo não carregar (ex: nenhum .mbtiles configurado
     // ainda), avisa em vez de deixar a tela em branco sem explicação.
     map.on("error", (e) => {
+      // Sempre registra no Console, mesmo quando também mostramos um
+      // aviso na tela — sem isso, erros que não sejam "mapa não
+      // configurado" ficavam invisíveis (nem no Console apareciam).
+      console.error("[SIG View] Erro do MapLibre:", e?.error || e);
       const status = e?.error?.status;
       if (status === 404) mostrarAvisoMapa();
+    });
+
+    map.on("sourcedataloading", (e) => {
+      console.debug("[SIG View] carregando fonte:", e.sourceId, e.tile ? `tile ${e.tile.tileID?.canonical?.z}/${e.tile.tileID?.canonical?.x}/${e.tile.tileID?.canonical?.y}` : "");
     });
 
     return map;

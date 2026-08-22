@@ -181,7 +181,7 @@ def _raster_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
             }
         },
         "layers": [
-            {"id": "background", "type": "background", "paint": {"background-color": "#101418"}},
+            {"id": "background", "type": "background", "paint": {"background-color": "#f7f6f2"}},
             {"id": "base", "type": "raster", "source": "base"},
         ],
     }
@@ -207,34 +207,34 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
         "name": "SIG View (vetorial local — OpenMapTiles)",
         "sources": {"openmaptiles": source},
         "layers": [
-            {"id": "background", "type": "background", "paint": {"background-color": "#101418"}},
+            {"id": "background", "type": "background", "paint": {"background-color": "#f7f6f2"}},
             {
                 "id": "landcover",
                 "type": "fill",
                 "source": "openmaptiles",
                 "source-layer": "landcover",
-                "paint": {"fill-color": "#182028", "fill-opacity": 0.6},
+                "paint": {"fill-color": "#e9ecdf", "fill-opacity": 0.6},
             },
             {
                 "id": "landuse",
                 "type": "fill",
                 "source": "openmaptiles",
                 "source-layer": "landuse",
-                "paint": {"fill-color": "#1c2530", "fill-opacity": 0.5},
+                "paint": {"fill-color": "#eae6d8", "fill-opacity": 0.5},
             },
             {
                 "id": "water",
                 "type": "fill",
                 "source": "openmaptiles",
                 "source-layer": "water",
-                "paint": {"fill-color": "#12303f"},
+                "paint": {"fill-color": "#a9cbe0"},
             },
             {
                 "id": "waterway",
                 "type": "line",
                 "source": "openmaptiles",
                 "source-layer": "waterway",
-                "paint": {"line-color": "#12303f", "line-width": 1},
+                "paint": {"line-color": "#a9cbe0", "line-width": 1},
             },
             {
                 "id": "building",
@@ -242,7 +242,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "building",
                 "minzoom": 14,
-                "paint": {"fill-color": "#232c36", "fill-outline-color": "#2c3644"},
+                "paint": {"fill-color": "#e3ded1", "fill-outline-color": "#d2cab8"},
             },
             {
                 "id": "boundary",
@@ -250,7 +250,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "boundary",
                 "filter": ["<=", ["get", "admin_level"], 6],
-                "paint": {"line-color": "#5a6472", "line-width": 1, "line-dasharray": [2, 2]},
+                "paint": {"line-color": "#a8a49a", "line-width": 1, "line-dasharray": [2, 2]},
             },
             {
                 "id": "road-minor",
@@ -258,7 +258,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "transportation",
                 "filter": ["in", ["get", "class"], ["literal", ["minor", "service", "track", "path"]]],
-                "paint": {"line-color": "#3a4552", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.5, 18, 3]},
+                "paint": {"line-color": "#d8d4c6", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.5, 18, 3]},
             },
             {
                 "id": "road-major",
@@ -272,7 +272,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 ],
                 "layout": {"line-cap": "round", "line-join": "round"},
                 "paint": {
-                    "line-color": "#8fa3bf",
+                    "line-color": "#c9a13b",
                     "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 1.6, 18, 8],
                 },
             },
@@ -282,7 +282,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "transportation",
                 "filter": ["==", ["get", "class"], "rail"],
-                "paint": {"line-color": "#5a6472", "line-width": 1},
+                "paint": {"line-color": "#9a9488", "line-width": 1},
             },
         ],
     }

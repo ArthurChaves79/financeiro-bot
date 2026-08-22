@@ -57,6 +57,24 @@ def main() -> None:
         print(f"  [ERRO] Não achou a tabela tiles: {exc}")
         sys.exit(1)
 
+    print("\n=== índices na tabela tiles ===")
+    indices = conn.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='tiles'"
+    ).fetchall()
+    tem_indice_bom = False
+    if not indices:
+        print("  NENHUM índice encontrado!")
+    for idx in indices:
+        print(f"  {idx['name']}: {idx['sql']}")
+        sql = (idx["sql"] or "").lower()
+        if "zoom_level" in sql and "tile_column" in sql and "tile_row" in sql:
+            tem_indice_bom = True
+    if not tem_indice_bom:
+        print("\n  [ATENCAO] Sem um indice cobrindo (zoom_level, tile_column, tile_row),")
+        print("  cada tile pedido faz uma busca varrendo a tabela toda - e a causa")
+        print("  mais provavel da lentidao. Rode:")
+        print("  python scripts\\corrigir_indice_mbtiles.py")
+
     print("\n=== amostra de um tile ===")
     amostra = conn.execute(
         "SELECT zoom_level, tile_column, tile_row, LENGTH(tile_data) AS tam, tile_data "

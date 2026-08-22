@@ -113,8 +113,13 @@ def _search_by_cep(conn: sqlite3.Connection, cep_digits: str, limit: int) -> lis
 
 def _search_fts(conn: sqlite3.Connection, query: str, limit: int) -> list[SearchResult]:
     normalized = _normalize(query)
-    # Cada termo vira um prefixo FTS5 (ex: "av paulista" -> "av* paulista*")
-    terms = [t for t in re.split(r"\s+", normalized) if t]
+    # Cada termo vira um prefixo FTS5 (ex: "av paulista" -> "av* paulista*").
+    # Separa por QUALQUER pontuação, não só espaço — o FTS5 (tokenizer
+    # unicode61) já quebra o texto indexado assim (ex: "045.123.0045"
+    # vira os tokens "045", "123", "0045" separados); se a busca não
+    # separar do mesmo jeito, digitar um código com pontos/traços (SQL de
+    # imóvel, matrícula etc.) não encontra nada mesmo estando indexado.
+    terms = [t for t in re.split(r"[^a-z0-9]+", normalized) if t]
     if not terms:
         return []
     match_expr = " ".join(f"{_escape_fts(t)}*" for t in terms)

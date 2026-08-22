@@ -13,7 +13,10 @@ suportado pelo MapLibre).
 """
 from __future__ import annotations
 
+import html
+import re
 import zipfile
+from html.parser import HTMLParser
 from io import BytesIO
 from xml.etree import ElementTree as ET
 
@@ -145,13 +148,89 @@ def _placemark_to_features(
     if name:
         props.setdefault("nome", name)
     if description:
-        props.setdefault("descricao", description)
+        # Exports do ArcGIS/QGIS costumam colocar TODOS os atributos numa
+        # tabela HTML dentro de <description>, em vez de <ExtendedData> —
+        # sem isso, tudo aparecia junto, ilegível, num campo só.
+        tabela = _extrair_tabela_da_descricao(description)
+        if tabela:
+            for chave, valor in tabela.items():
+                props.setdefault(chave, valor)
+        else:
+            texto = _texto_sem_html(description) if "<" in description else description
+            if texto:
+                props.setdefault("descricao", texto)
 
     estilo = estilo_ja_resolvido if estilo_ja_resolvido is not None else _resolve_style(placemark, styles, style_maps)
     props = {**estilo, **props}  # atributos do próprio Placemark sempre vencem, se colidirem
 
     geometries = _placemark_geometries(placemark)
     return [{"type": "Feature", "properties": dict(props), "geometry": g} for g in geometries]
+
+
+# --------------------------------------------------------------------------
+# <description> em HTML (comum em exports do ArcGIS/QGIS) — extrai os
+# campos de uma tabela em vez de mostrar o HTML bruto.
+# --------------------------------------------------------------------------
+
+class _ExtratorTabelaHTML(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.linhas: list[list[str]] = []
+        self._linha_atual: list[str] | None = None
+        self._celula_atual: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag == "tr":
+            self._linha_atual = []
+        elif tag in ("td", "th"):
+            self._celula_atual = []
+        elif tag == "br" and self._celula_atual is not None:
+            self._celula_atual.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("td", "th") and self._celula_atual is not None:
+            texto = "".join(self._celula_atual).strip()
+            if self._linha_atual is not None:
+                self._linha_atual.append(texto)
+            self._celula_atual = None
+        elif tag == "tr" and self._linha_atual is not None:
+            self.linhas.append(self._linha_atual)
+            self._linha_atual = None
+
+    def handle_data(self, data: str) -> None:
+        if self._celula_atual is not None:
+            self._celula_atual.append(data)
+
+
+def _extrair_tabela_da_descricao(descricao: str) -> dict[str, str] | None:
+    """Tenta ler uma tabela HTML de 2 colunas (campo/valor) dentro de
+    <description>. Devolve None se não parecer uma tabela reconhecível
+    (description é texto simples mesmo, sem tabela)."""
+    if "<table" not in descricao.lower():
+        return None
+
+    parser = _ExtratorTabelaHTML()
+    try:
+        parser.feed(descricao)
+    except Exception:
+        return None
+
+    pares: dict[str, str] = {}
+    for linha in parser.linhas:
+        if len(linha) == 2:
+            chave, valor = linha[0].strip().rstrip(":"), linha[1].strip()
+            if chave and valor and chave not in pares:
+                pares[chave] = html.unescape(valor)
+    return pares or None
+
+
+def _texto_sem_html(texto_html: str) -> str:
+    """Remove tags HTML de um texto, deixando só o conteúdo legível —
+    usado quando a description tem HTML mas não é uma tabela (ex: um
+    parágrafo formatado)."""
+    sem_tags = re.sub(r"<[^>]+>", " ", texto_html)
+    sem_tags = html.unescape(sem_tags)
+    return re.sub(r"\s+", " ", sem_tags).strip()
 
 
 def parse_kml_bytes(data: bytes) -> dict:

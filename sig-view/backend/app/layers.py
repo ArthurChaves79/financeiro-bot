@@ -112,7 +112,9 @@ def _resolver_href(href: str, base_dir: Path) -> Path | None:
     return caminho if caminho.is_absolute() else (base_dir / caminho)
 
 
-def _grupos_e_links_do_arquivo(path: Path) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
+def _grupos_e_links_do_arquivo_sem_cache(
+    path: Path,
+) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
     """Devolve (grupos, network_links) pra um arquivo. Para .geojson é
     sempre 1 grupo sem links; para .kml/.kmz respeita <Folder> e
     <NetworkLink> (inclusive aninhados)."""
@@ -125,6 +127,30 @@ def _grupos_e_links_do_arquivo(path: Path) -> tuple[list[tuple[tuple[str, ...], 
     if suffix == ".kmz":
         return kml_module.parse_kmz_full(path.read_bytes())
     raise LayerReadError(f"Formato não suportado: {suffix}")
+
+
+# Reprocessar um KML/KMZ grande (XML inteiro + geometrias) é caro — sem
+# isso, listar as camadas (que abre TODOS os arquivos da pasta pra
+# montar a árvore) e depois clicar em uma camada específica reprocessam
+# tudo de novo do zero, mesmo que nada tenha mudado. O cache guarda o
+# resultado por arquivo, e só reprocessa se o arquivo realmente mudou
+# (pela data de modificação) — assim editar/atualizar um KML na pasta
+# continua funcionando normalmente, sem precisar reiniciar o programa.
+_cache_arquivos: dict[Path, tuple[float, tuple[list, dict]]] = {}
+
+
+def _grupos_e_links_do_arquivo(
+    path: Path,
+) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
+    resolvido = path.resolve()
+    mtime = path.stat().st_mtime
+    em_cache = _cache_arquivos.get(resolvido)
+    if em_cache is not None and em_cache[0] == mtime:
+        return em_cache[1]
+
+    resultado = _grupos_e_links_do_arquivo_sem_cache(path)
+    _cache_arquivos[resolvido] = (mtime, resultado)
+    return resultado
 
 
 def _layer_id(base: str, caminho: tuple[str, ...]) -> str:

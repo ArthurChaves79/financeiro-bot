@@ -138,6 +138,82 @@ def _grupos_e_links_do_arquivo_sem_cache(
 # continua funcionando normalmente, sem precisar reiniciar o programa.
 _cache_arquivos: dict[Path, tuple[float, tuple[list, dict]]] = {}
 
+# Cache em DISCO (além do de memória acima) — o de memória se perde
+# toda vez que o programa reinicia, então a primeira abertura de cada
+# arquivo depois de reiniciar volta a ser lenta. Rodando
+# scripts/pre_converter_camadas.py, o processamento já fica pronto num
+# arquivo `.json` guardado ao lado do KML original (numa subpasta
+# oculta), e o programa só precisa ler esse JSON — nunca reprocessa o
+# XML, mesmo recém-aberto.
+_CACHE_DISCO_SUBPASTA = ".sigview_cache"
+
+
+def _caminho_cache_disco(path: Path) -> Path:
+    return path.parent / _CACHE_DISCO_SUBPASTA / f"{path.name}.json"
+
+
+def _serializar_resultado(
+    grupos: list[tuple[tuple[str, ...], dict]], network_links: dict[tuple[str, ...], list[dict]]
+) -> dict:
+    return {
+        "grupos": [{"caminho": list(caminho), "geojson": geojson} for caminho, geojson in grupos],
+        "network_links": [
+            {"caminho": list(caminho), "links": links} for caminho, links in network_links.items()
+        ],
+    }
+
+
+def _desserializar_resultado(
+    data: dict,
+) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
+    grupos = [(tuple(item["caminho"]), item["geojson"]) for item in data["grupos"]]
+    network_links = {tuple(item["caminho"]): item["links"] for item in data["network_links"]}
+    return grupos, network_links
+
+
+def cache_disco_atualizado(path: Path) -> bool:
+    """True se já existe um cache em disco pra esse arquivo e ele
+    corresponde à versão atual (mesma data de modificação)."""
+    cache_path = _caminho_cache_disco(path)
+    if not cache_path.is_file():
+        return False
+    try:
+        with cache_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return False
+    return data.get("mtime_origem") == path.stat().st_mtime
+
+
+def gerar_cache_disco(path: Path) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]]:
+    """Processa o arquivo (do zero, ignorando qualquer cache) e salva o
+    resultado em disco — usado por scripts/pre_converter_camadas.py."""
+    resultado = _grupos_e_links_do_arquivo_sem_cache(path)
+    grupos, network_links = resultado
+
+    cache_path = _caminho_cache_disco(path)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    dados = _serializar_resultado(grupos, network_links)
+    dados["mtime_origem"] = path.stat().st_mtime
+    with cache_path.open("w", encoding="utf-8") as fh:
+        json.dump(dados, fh, ensure_ascii=False)
+
+    return resultado
+
+
+def _ler_cache_disco(
+    path: Path,
+) -> tuple[list[tuple[tuple[str, ...], dict]], dict[tuple[str, ...], list[dict]]] | None:
+    if not cache_disco_atualizado(path):
+        return None
+    cache_path = _caminho_cache_disco(path)
+    try:
+        with cache_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return _desserializar_resultado(data)
+    except (json.JSONDecodeError, OSError, KeyError):
+        return None
+
 
 def _grupos_e_links_do_arquivo(
     path: Path,
@@ -147,6 +223,11 @@ def _grupos_e_links_do_arquivo(
     em_cache = _cache_arquivos.get(resolvido)
     if em_cache is not None and em_cache[0] == mtime:
         return em_cache[1]
+
+    do_disco = _ler_cache_disco(path)
+    if do_disco is not None:
+        _cache_arquivos[resolvido] = (mtime, do_disco)
+        return do_disco
 
     resultado = _grupos_e_links_do_arquivo_sem_cache(path)
     _cache_arquivos[resolvido] = (mtime, resultado)

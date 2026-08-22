@@ -332,6 +332,35 @@ python scripts/aplicar_correcoes_poligonos.py \
 - Pode rodar isso quantas vezes precisar, a cada novo lote corrigido —
   é incremental, não refaz o que já está pronto.
 
+## Performance com KMLs grandes/muitos arquivos
+
+Converter KML pra GeoJSON (ler o XML, resolver estilos, montar as
+geometrias) tem um custo — o programa guarda esse resultado em memória
+enquanto está aberto, mas isso se perde a cada reinício, deixando a
+**primeira** abertura de cada camada lenta de novo.
+
+`scripts/pre_converter_camadas.py` resolve isso adiantando esse
+processamento e salvando o resultado pronto em disco (numa subpasta
+oculta `.sigview_cache`, do lado dos KMLs originais). O programa passa
+a ler esse resultado já pronto em vez de reprocessar o XML — inclusive
+logo depois de abrir o programa pela primeira vez.
+
+```bash
+cd backend
+python scripts/pre_converter_camadas.py
+```
+
+- Roda **uma vez** depois de colocar/atualizar KMLs na pasta de
+  camadas — arquivos sem mudança são pulados automaticamente da
+  próxima vez (compara a data de modificação).
+- Use `--forcar` pra reconverter tudo, mesmo o que já está atualizado.
+- Se o arquivo original mudar depois (nova exportação, correção etc.),
+  o programa detecta sozinho que o cache ficou desatualizado e
+  reprocessa — rodar o script de novo é só pra não pagar esse custo na
+  hora que alguém está usando o mapa.
+- Vale colocar isso num agendamento (Agendador de Tarefas do Windows),
+  rodando pouco depois de qualquer atualização automática das camadas.
+
 ## Atualização periódica
 
 `scripts/update_layers_job.py` é o esqueleto do job que deve rodar

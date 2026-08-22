@@ -224,10 +224,14 @@ def _grupos_e_links_do_arquivo(
     if em_cache is not None and em_cache[0] == mtime:
         return em_cache[1]
 
-    do_disco = _ler_cache_disco(path)
-    if do_disco is not None:
-        _cache_arquivos[resolvido] = (mtime, do_disco)
-        return do_disco
+    # O cache em disco só compensa pra KML/KMZ (processamento de XML
+    # caro) — .geojson já é rápido de ler (json.load nativo), então
+    # nem vale gastar uma checagem de disco extra pra ele.
+    if path.suffix.lower() != ".geojson":
+        do_disco = _ler_cache_disco(path)
+        if do_disco is not None:
+            _cache_arquivos[resolvido] = (mtime, do_disco)
+            return do_disco
 
     resultado = _grupos_e_links_do_arquivo_sem_cache(path)
     _cache_arquivos[resolvido] = (mtime, resultado)

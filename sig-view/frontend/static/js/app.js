@@ -28,6 +28,35 @@
     return res.json();
   }
 
+  // Limita quantas buscas de camada acontecem ao mesmo tempo. Sem isso,
+  // marcar uma pasta com centenas de subcamadas (ex: um KML com muitas
+  // pastas) dispara todas as requisições de uma vez, o que pode
+  // sobrecarregar a conexão local e derrubar algumas delas ("Failed to
+  // fetch") — mesmo tudo estando certo do lado do servidor.
+  const LIMITE_BUSCAS_SIMULTANEAS = 4;
+  let _buscasAtivas = 0;
+  const _filaDeBuscas = [];
+
+  function comLimiteDeConcorrencia(tarefa) {
+    return new Promise((resolve, reject) => {
+      const executar = () => {
+        _buscasAtivas++;
+        tarefa()
+          .then(resolve, reject)
+          .finally(() => {
+            _buscasAtivas--;
+            const proxima = _filaDeBuscas.shift();
+            if (proxima) proxima();
+          });
+      };
+      if (_buscasAtivas < LIMITE_BUSCAS_SIMULTANEAS) {
+        executar();
+      } else {
+        _filaDeBuscas.push(executar);
+      }
+    });
+  }
+
   async function init() {
     const config = await fetchJSON(API.config);
     state.map = createMap(config);
@@ -373,7 +402,7 @@
 
     let geojson;
     try {
-      geojson = await fetchJSON(API.layer(layerId));
+      geojson = await comLimiteDeConcorrencia(() => fetchJSON(API.layer(layerId)));
     } catch (err) {
       alert(`Não foi possível carregar a camada: ${err.message}`);
       return;
@@ -457,7 +486,7 @@
         return;
       }
       try {
-        const geojson = await fetchJSON(API.layer(layerId));
+        const geojson = await comLimiteDeConcorrencia(() => fetchJSON(API.layer(layerId)));
         source.setData(geojson);
       } catch (err) {
         console.warn(`Falha ao atualizar a camada ${layerId}:`, err.message);

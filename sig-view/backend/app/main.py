@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from . import layers as layers_module
 from . import search as search_module
@@ -33,6 +34,13 @@ app.add_middleware(
     allow_methods=["GET", "PUT"],
     allow_headers=["*"],
 )
+
+# Camadas grandes (milhares de polígonos) viram um JSON de vários MB —
+# comprimir a resposta reduz bastante o tamanho transferido (JSON
+# comprime muito bem, é bastante texto repetido) e ajuda o "clique até
+# aparecer no mapa" a ficar mais rápido, sem precisar de nada externo
+# (vem pronto no Starlette).
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 @app.get("/api/config")

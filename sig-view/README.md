@@ -361,6 +361,38 @@ python scripts/pre_converter_camadas.py
 - Vale colocar isso num agendamento (Agendador de Tarefas do Windows),
   rodando pouco depois de qualquer atualização automática das camadas.
 
+### Camadas com muitos polígonos (clique até aparecer no mapa)
+
+Se o `.geojson` de uma camada é grande (muitas centenas/milhares de
+polígonos), duas coisas de alto impacto e baixo risco atacam a
+demora entre clicar na camada e ela aparecer no mapa:
+
+1. **Compressão das respostas (gzip)** — já ativo, não precisa fazer
+   nada. O servidor comprime automaticamente qualquer resposta grande
+   (`GZipMiddleware`), reduzindo bastante o tamanho transferido até o
+   navegador — JSON comprime muito bem, é bastante texto repetido.
+
+2. **Reduzir a precisão das coordenadas** — Google Earth/QGIS costumam
+   exportar coordenadas com 14-15 casas decimais, mas 7 casas já dão
+   ~1cm de precisão no chão (de sobra pra um lote urbano). O resto é
+   peso morto: mais bytes pra ler do disco, mandar pro navegador e o
+   MapLibre processar. `scripts/compactar_camadas.py` arredonda as
+   coordenadas dos `.geojson` já existentes, sem mexer em mais nada
+   (propriedades, pastas e nomes de arquivo continuam iguais):
+
+   ```bash
+   cd backend
+   python scripts/compactar_camadas.py data/layers --dry-run   # só mostra a redução
+   python scripts/compactar_camadas.py data/layers             # aplica de verdade
+   ```
+
+   - Roda **uma vez** em cima dos arquivos que já existem (ou de novo
+     depois de gerar/atualizar camadas grandes).
+   - `--dry-run` mostra quanto cada arquivo reduziria sem alterar nada.
+   - `--casas N` ajusta a precisão (padrão 7 = ~1cm); não precisa mexer
+     nisso a menos que note diferença visual no mapa.
+   - É seguro rodar de novo em cima de um arquivo já compactado.
+
 ## Atualização periódica
 
 `scripts/update_layers_job.py` é o esqueleto do job que deve rodar

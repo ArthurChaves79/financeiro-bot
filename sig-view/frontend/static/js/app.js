@@ -606,12 +606,60 @@
       tile_source_type: document.getElementById("cfg-tile-type"),
     };
 
+    const mapaSelect = document.getElementById("cfg-mapa-select");
+    const mbtilesLabel = document.getElementById("cfg-mbtiles-label");
+    const mbtilesInput = fields.mbtiles_path;
+    const VALOR_PERSONALIZADO = "__personalizado__";
+
+    // O <select> é só um jeito mais fácil de escolher entre os
+    // .mbtiles de data/maps/ — quem realmente é salvo continua sendo
+    // o input de texto escondido (cfg-mbtiles), pra não duplicar a
+    // lógica de salvar/validar que já existe pros outros campos.
+    function mostrarCampoPersonalizado(mostrar) {
+      mbtilesLabel.hidden = !mostrar;
+      mbtilesInput.hidden = !mostrar;
+    }
+
+    mapaSelect.addEventListener("change", () => {
+      if (mapaSelect.value === VALOR_PERSONALIZADO) {
+        mostrarCampoPersonalizado(true);
+      } else {
+        mostrarCampoPersonalizado(false);
+        mbtilesInput.value = mapaSelect.value;
+      }
+    });
+
     btn.addEventListener("click", async () => {
       errorEl.hidden = true;
       try {
-        const current = await fetchJSON(API.settings);
+        const [current, mapasResp] = await Promise.all([
+          fetchJSON(API.settings),
+          fetchJSON("/api/maps").catch(() => ({ maps: [] })),
+        ]);
         for (const [key, el] of Object.entries(fields)) {
           if (current[key] != null) el.value = current[key];
+        }
+
+        mapaSelect.innerHTML = "";
+        for (const mapa of mapasResp.maps || []) {
+          const opt = document.createElement("option");
+          opt.value = mapa.caminho;
+          opt.textContent = mapa.nome;
+          mapaSelect.appendChild(opt);
+        }
+        const optPersonalizado = document.createElement("option");
+        optPersonalizado.value = VALOR_PERSONALIZADO;
+        optPersonalizado.textContent = "Personalizado (digitar caminho)...";
+        mapaSelect.appendChild(optPersonalizado);
+
+        const atual = mbtilesInput.value;
+        const existeNaLista = Array.from(mapaSelect.options).some((o) => o.value === atual);
+        if (existeNaLista) {
+          mapaSelect.value = atual;
+          mostrarCampoPersonalizado(false);
+        } else {
+          mapaSelect.value = VALOR_PERSONALIZADO;
+          mostrarCampoPersonalizado(true);
         }
       } catch (err) {
         showError(`Não foi possível carregar as configurações atuais: ${err.message}`);

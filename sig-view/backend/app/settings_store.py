@@ -17,6 +17,11 @@ from .config import BASE_DIR, settings
 
 CONFIG_FILE = BASE_DIR / "data" / "config.json"
 
+# Pasta onde o usuário pode colocar um ou mais .mbtiles prontos (ex:
+# ruas.mbtiles, satelite.mbtiles) pra escolher entre eles direto pela
+# tela de Configurações, em vez de digitar o caminho completo.
+MAPS_DIR = BASE_DIR / "data" / "maps"
+
 # Campos que a tela de Configurações pode alterar.
 EDITABLE_FIELDS = {
     "layers_dir": Path,
@@ -37,6 +42,29 @@ def load_overrides_into_settings() -> None:
     except (json.JSONDecodeError, OSError):
         return
     _apply(data)
+
+
+def list_available_maps() -> list[dict[str, str]]:
+    """Lista os .mbtiles prontos pra escolher (pasta data/maps/) — cada
+    um vira uma opção no dropdown de Configurações, com o nome do
+    arquivo (sem extensão) como rótulo. Inclui também o mapa
+    atualmente configurado, mesmo que esteja fora dessa pasta (ex: um
+    caminho de rede digitado manualmente antes desse recurso existir),
+    pra não "sumir" a seleção atual do dropdown."""
+    mapas: list[dict[str, str]] = []
+    vistos: set[str] = set()
+
+    if MAPS_DIR.is_dir():
+        for arquivo in sorted(MAPS_DIR.glob("*.mbtiles")):
+            caminho = str(arquivo.resolve())
+            mapas.append({"nome": arquivo.stem, "caminho": caminho})
+            vistos.add(caminho)
+
+    atual = str(settings.mbtiles_path.resolve()) if str(settings.mbtiles_path) else ""
+    if atual and atual not in vistos and Path(atual).exists():
+        mapas.append({"nome": f"{Path(atual).stem} (personalizado)", "caminho": atual})
+
+    return mapas
 
 
 def get_editable_settings() -> dict[str, Any]:

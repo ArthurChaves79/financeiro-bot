@@ -104,6 +104,8 @@ página. Dá pra apontar, sem editar nenhum arquivo:
 
 - **Pasta de camadas** — onde ficam os `.geojson` (local ou rede, ex: `\\servidor\sigview\layers`)
 - **Banco de busca** — caminho do `geocoder.db`
+- **Mapa** — dropdown com os `.mbtiles` encontrados em `data\maps\`
+  (veja "Escolher entre vários mapas" abaixo); sem digitar caminho nenhum
 - **URL do servidor de mapas (tiles)** — endereço do TileServer GL na rede
 - **Tipo do mapa** — vetorial ou raster
 
@@ -154,6 +156,17 @@ Para manter atualizado com mudanças da prefeitura, combine essa base OSM
 com camadas específicas do **GeoSampa** (dados abertos da Prefeitura de
 São Paulo) — essas entram como **camadas** normais (GeoJSON), não como
 tile do mapa base, então atualizam independente da malha de ruas.
+
+### Escolher entre vários mapas
+
+Se você tem mais de um `.mbtiles` pronto (ex: um de ruas e outro de
+imagem de satélite), coloque todos dentro de `backend/data/maps/`
+(qualquer nome de arquivo, ex: `ruas.mbtiles`, `satelite.mbtiles`) — em
+⚙ Configurações eles aparecem automaticamente como opções num dropdown
+("Mapa"), sem precisar digitar caminho nenhum. Trocar a seleção e salvar
+já recarrega o mapa escolhido. Um caminho de rede digitado manualmente
+antes desse recurso existir continua funcionando — aparece na lista como
+"(personalizado)".
 
 ## Busca (endereço, CEP, bairro)
 
@@ -411,6 +424,7 @@ funciona.
 | `GET /api/layers` | lista camadas disponíveis |
 | `GET /api/layers/{id}` | GeoJSON de uma camada |
 | `GET /api/settings` | configurações editáveis atuais (pastas/URL) |
+| `GET /api/maps` | mapas (`.mbtiles`) disponíveis em `data/maps/`, para o dropdown de Configurações |
 | `PUT /api/settings` | atualiza e persiste as configurações |
 | `GET /tiles/style.json` | estilo do mapa embutido (lido do `.mbtiles`) |
 | `GET /tiles/{z}/{x}/{y}` | um tile do mapa embutido |

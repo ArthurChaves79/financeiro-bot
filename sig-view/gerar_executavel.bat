@@ -69,15 +69,25 @@ if exist data\mapa.mbtiles (
 )
 
 echo.
+echo === Levando outros mapas (data\maps\*.mbtiles), se existirem ===
+if exist data\maps (
+    if not exist "..\data\maps" mkdir "..\data\maps"
+    xcopy /Y /I data\maps\*.mbtiles "..\data\maps\" >nul 2>&1
+    echo Pasta data\maps copiada - aparecem como opcoes em Configuracoes.
+)
+
+echo.
 echo ==================================================
 echo  Pronto! O arquivo SigView.exe esta em:
 echo  %~dp0SigView.exe
 echo.
-echo  Para distribuir com o mapa embutido, copie SigView.exe
-echo  JUNTO com a pasta "data" (que fica do lado dele) para
-echo  o outro computador. Sem a pasta data, o programa ainda
-echo  funciona, so que sem o mapa de ruas ate voce configurar
-echo  um em Configuracoes.
+echo  Para instalar num outro computador, copie SO ISSO:
+echo    - SigView.exe
+echo    - a pasta "data" do lado dele (mapa.mbtiles / data\maps)
+echo  NAO precisa levar GeoJSON nenhum - sem a pasta data\layers
+echo  o SigView.exe abre normal, so sem camadas na lista. Depois
+echo  de colocar os .geojson naquele computador (local ou pasta
+echo  de rede), aponte o caminho em Configuracoes.
 echo ==================================================
 echo.
 pause

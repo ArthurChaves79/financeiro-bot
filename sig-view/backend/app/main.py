@@ -85,6 +85,13 @@ def api_get_settings() -> dict:
     return settings_store.get_editable_settings()
 
 
+@app.get("/api/maps")
+def api_list_maps() -> dict:
+    """Mapas (.mbtiles) prontos pra escolher em Configurações — ver
+    settings_store.list_available_maps."""
+    return {"maps": settings_store.list_available_maps()}
+
+
 @app.put("/api/settings")
 def api_update_settings(data: dict) -> dict:
     try:

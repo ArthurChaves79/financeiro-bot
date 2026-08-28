@@ -63,7 +63,16 @@
       </ul>
     </aside>
 
-    <div id="map"></div>
+    <div id="map">
+      <aside id="feature-panel">
+        <div id="feature-panel-header">
+          <span id="feature-panel-swatch" class="layer-swatch"></span>
+          <h3 id="feature-panel-title"></h3>
+          <button id="feature-panel-close" type="button" aria-label="Fechar" title="Fechar">×</button>
+        </div>
+        <div id="feature-panel-body"></div>
+      </aside>
+    </div>
   </div>
 
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>

@@ -83,6 +83,7 @@
     });
     setupSearch();
     setupSettings();
+    setupFeaturePanel();
   }
 
   function createMap(config) {
@@ -462,17 +463,13 @@
     });
 
     // Clique em qualquer tipo de geometria (ponto, linha ou polígono)
-    // abre um popup com todos os atributos da feature.
+    // abre a barra lateral de detalhes com todos os atributos da feature.
     for (const id of [fillId, lineId, pointId]) {
       state.map.on("click", id, (e) => {
         const feature = e.features[0];
         const props = feature.properties || {};
-        const entradas = Object.entries(props).filter(([k]) => !k.startsWith("_"));
         const titulo = props.nome || camada.nome || layerId;
-        new maplibregl.Popup({ maxWidth: "320px" })
-          .setLngLat(e.lngLat)
-          .setHTML(buildPopupHtml(titulo, cor, entradas))
-          .addTo(state.map);
+        abrirPainelFeature(titulo, cor, props);
       });
       state.map.on("mouseenter", id, () => { state.map.getCanvas().style.cursor = "pointer"; });
       state.map.on("mouseleave", id, () => { state.map.getCanvas().style.cursor = ""; });
@@ -728,13 +725,13 @@
     }
   }
 
-  // Popup padrão usado tanto no clique de uma feature quanto num
-  // resultado de busca — cabeçalho com a cor da camada + tabela de
-  // atributos, combinando com o tema escuro do resto do app.
+  // Popup pequeno usado só pro marcador de um resultado de busca (não
+  // é sobre um polígono do mapa, então continua sendo um popup simples
+  // de "balão", não a barra lateral).
   function buildPopupHtml(titulo, cor, entradas) {
     const corpo = entradas.length
       ? `<table class="sigview-popup-table">${entradas
-          .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`)
+          .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(formatarValorPropriedade(v))}</td></tr>`)
           .join("")}</table>`
       : `<div class="sigview-popup-empty">Sem atributos</div>`;
     return `
@@ -746,6 +743,186 @@
         <div class="sigview-popup-body">${corpo}</div>
       </div>
     `;
+  }
+
+  // ---- Barra lateral de detalhes do polígono/feature ----------------------
+  //
+  // Ao clicar num polígono/linha/ponto do mapa, mostra TODAS as
+  // informações que a feature tiver, só organizando um conjunto de
+  // campos "conhecidos" (contribuinte, matrícula/transcrição, endereço,
+  // loteamento, documentos, observações) numa ordem fixa e com rótulo
+  // amigável — o resto das propriedades continua aparecendo depois,
+  // igual antes. Campos sem valor simplesmente não aparecem.
+
+  function setupFeaturePanel() {
+    const closeBtn = document.getElementById("feature-panel-close");
+    closeBtn.addEventListener("click", fecharPainelFeature);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") fecharPainelFeature();
+    });
+  }
+
+  function fecharPainelFeature() {
+    document.getElementById("feature-panel").classList.remove("open");
+  }
+
+  function abrirPainelFeature(titulo, cor, props) {
+    const painel = document.getElementById("feature-panel");
+    document.getElementById("feature-panel-title").textContent = titulo;
+    document.getElementById("feature-panel-title").title = titulo;
+    document.getElementById("feature-panel-swatch").style.background = cor || "#3fa9f5";
+
+    const linhas = montarLinhasPainel(props || {});
+    document.getElementById("feature-panel-body").innerHTML = linhas.length
+      ? linhas.map(renderLinhaPainel).join("")
+      : `<div class="feature-panel-empty">Sem atributos</div>`;
+
+    painel.classList.add("open");
+  }
+
+  function renderLinhaPainel(linha) {
+    const valorHtml = linha.documentos
+      ? `<div class="feature-panel-docs">${linha.documentos
+          .map((doc) => `<a href="${escapeHtml(doc)}" target="_blank" rel="noopener">📎 ${escapeHtml(nomeArquivoDoCaminho(doc))}</a>`)
+          .join("")}</div>`
+      : escapeHtml(linha.valor);
+    return `
+      <div class="feature-panel-row">
+        <span class="feature-panel-label">${escapeHtml(linha.label)}</span>
+        <div class="feature-panel-value">${valorHtml}</div>
+      </div>
+    `;
+  }
+
+  // Nomes de propriedade "conhecidos" pra cada campo do painel, já
+  // normalizados (sem acento/maiúscula/separador) — aceita variações
+  // comuns de nome vindas de KML/SQL/GeoJSON de terceiros, sem precisar
+  // bater exatamente com um nome fixo de coluna.
+  const CAMPOS_CONHECIDOS = {
+    setor: ["setor"],
+    quadra: ["quadra"],
+    lote: ["lote"],
+    contribuinte: ["contribuinte", "numerocontribuinte", "numcontribuinte", "inscricaoimobiliaria", "inscricao"],
+    matricula: ["matricula", "nmatricula", "numeromatricula"],
+    transcricao: ["transcricao", "ntranscricao", "numerotranscricao"],
+    tipoLogradouro: ["tipologradouro", "tipoendereco", "tipo"],
+    logradouro: ["logradouro", "endereco", "rua", "enderecocompleto"],
+    numeroEndereco: ["numeroendereco", "nendereco", "numero", "num"],
+    loteamento: ["loteamento", "nomeloteamento"],
+    documentos: ["documentos", "documento", "anexos", "anexo", "linkdocumentos", "urldocumentos", "arquivos", "arquivo"],
+    observacoes: ["observacoes", "observacao", "obs"],
+  };
+
+  function normalizarChave(k) {
+    return k
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  }
+
+  // Converte qualquer valor de propriedade pra texto legível — inclusive
+  // array/objeto (que antes viravam "[object Object]" no popup, o
+  // "aparece entre colchetes" que causava confusão).
+  function formatarValorPropriedade(v) {
+    if (v === null || v === undefined) return "";
+    if (Array.isArray(v)) {
+      return v.map(formatarValorPropriedade).filter(Boolean).join(", ");
+    }
+    if (typeof v === "object") {
+      return Object.values(v).map(formatarValorPropriedade).filter(Boolean).join(", ");
+    }
+    return String(v).trim();
+  }
+
+  function indexarPropriedades(props) {
+    const porNomeNormalizado = new Map(); // nome normalizado -> nome original
+    for (const chave of Object.keys(props)) {
+      if (chave.startsWith("_")) continue; // uso interno (ex: cor vinda do KML)
+      if (formatarValorPropriedade(props[chave]) === "") continue; // vazio não conta como presente
+      const norm = normalizarChave(chave);
+      if (!porNomeNormalizado.has(norm)) porNomeNormalizado.set(norm, chave);
+    }
+    return porNomeNormalizado;
+  }
+
+  function pegarPropriedade(props, indice, consumidas, candidatos) {
+    for (const candidato of candidatos) {
+      const chaveOriginal = indice.get(candidato);
+      if (chaveOriginal !== undefined) {
+        consumidas.add(chaveOriginal);
+        return formatarValorPropriedade(props[chaveOriginal]);
+      }
+    }
+    return "";
+  }
+
+  // Um campo de "documentos" pode ter mais de um caminho/link, separados
+  // por vírgula/ponto-e-vírgula/quebra de linha.
+  function extrairDocumentos(bruto) {
+    const partes = bruto.split(/[;\n]+/).map((s) => s.trim()).filter(Boolean);
+    return partes.length ? partes : [bruto];
+  }
+
+  function nomeArquivoDoCaminho(caminho) {
+    const semBarra = caminho.split(/[\\/]/).pop();
+    return semBarra || caminho;
+  }
+
+  function rotuloAmigavel(chave) {
+    const espacado = chave.replace(/[_-]+/g, " ").trim();
+    return espacado.charAt(0).toUpperCase() + espacado.slice(1);
+  }
+
+  function montarLinhasPainel(props) {
+    const indice = indexarPropriedades(props);
+    const consumidas = new Set();
+    const linhas = [];
+
+    // Contribuinte = Setor + Quadra + Lote (ou já vem pronto num campo
+    // próprio, ex: vindo direto do SQL) — mostrado como um só valor.
+    const setor = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.setor);
+    const quadra = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.quadra);
+    const lote = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.lote);
+    const contribuinteDireto = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.contribuinte);
+    const contribuinte = contribuinteDireto || [setor, quadra, lote].filter(Boolean).join(".");
+    if (contribuinte) linhas.push({ label: "Contribuinte", valor: contribuinte });
+
+    // Número do Registro: Matrícula (prioridade) ou Transcrição.
+    const matricula = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.matricula);
+    const transcricao = matricula ? "" : pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.transcricao);
+    if (matricula) linhas.push({ label: "Matrícula", valor: matricula });
+    else if (transcricao) linhas.push({ label: "Transcrição", valor: transcricao });
+
+    // Endereço: Tipo + Logradouro + nº (ex: "Rua Exemplo, 123").
+    const tipo = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.tipoLogradouro);
+    const logradouro = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.logradouro);
+    const numeroEndereco = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.numeroEndereco);
+    const endereco = [tipo, logradouro].filter(Boolean).join(" ").trim() + (numeroEndereco ? `, ${numeroEndereco}` : "");
+    if (endereco.trim()) linhas.push({ label: "Endereço", valor: endereco.trim() });
+
+    const loteamento = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamento);
+    if (loteamento) linhas.push({ label: "Loteamento", valor: loteamento });
+
+    // Documentos anexados ao loteamento — vira link clicável, não texto.
+    const documentosBruto = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.documentos);
+    if (documentosBruto) {
+      linhas.push({ label: "Documentos", documentos: extrairDocumentos(documentosBruto) });
+    }
+
+    const observacoes = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.observacoes);
+    if (observacoes) linhas.push({ label: "Observações", valor: observacoes });
+
+    // Qualquer outra propriedade que a feature tiver, não coberta pelos
+    // campos conhecidos acima, ainda aparece — só depois, no final.
+    for (const [chave, valorOriginal] of Object.entries(props)) {
+      if (chave.startsWith("_") || consumidas.has(chave)) continue;
+      const valor = formatarValorPropriedade(valorOriginal);
+      if (!valor) continue;
+      linhas.push({ label: rotuloAmigavel(chave), valor });
+    }
+
+    return linhas;
   }
 
   function escapeHtml(str) {

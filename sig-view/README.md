@@ -232,18 +232,33 @@ dentro (inclusive aninhadas em vários níveis). Se a pasta tem placemarks
 direto nela (não só subpastas), ela também ganha seu próprio checkbox,
 independente das subpastas.
 
-**Cores**: se o `.kml` já define `<Style>`/`<StyleMap>` (cor de
-preenchimento, cor e espessura de linha, cor do ícone), essa cor é
-respeitada. Camadas ou pastas sem estilo próprio (incluindo `.geojson`)
-recebem uma cor automática, sempre a mesma pra cada camada (não muda ao
-reiniciar o programa), pra ficar fácil distinguir uma camada da outra no
-mapa e no painel lateral.
+**Cores**: respeita a cor do próprio polígono, na seguinte ordem de
+prioridade: `<Style>`/`<StyleMap>` do KML (preenchimento, linha, ícone);
+propriedades no padrão "simplestyle" comuns em GeoJSON de outras
+ferramentas (`fill`, `stroke`, `marker-color`); um campo `cor` cru nas
+propriedades da feature (comum em export de banco de dados). Só cai pra
+cor automática da camada (sempre a mesma, mesmo depois de reiniciar)
+quando a feature não define nenhuma dessas.
 
-**Clique no mapa**: funciona em pontos, linhas e polígonos — mostra
-todos os atributos daquela feature num popup (o que veio do banco, do
-KML, etc.). Propriedades internas do SIG View (usadas só pra estilo/
-controle, como a cor ou se foi vinculada a um banco) começam com `_` e
-não aparecem no popup, só os dados de verdade.
+**Clique no mapa**: funciona em pontos, linhas e polígonos — abre uma
+barra lateral com os detalhes da feature. Um conjunto de campos
+"conhecidos" aparece primeiro, numa ordem fixa, reconhecendo variações
+comuns de nome de coluna (sem acento/maiúscula/espaço):
+
+| Campo na barra | Reconhece (nome da propriedade) |
+|---|---|
+| Contribuinte | `contribuinte`/`numero_contribuinte`/`inscricao` — ou monta a partir de `setor`+`quadra`+`lote` separados |
+| Matrícula / Transcrição | `matricula` (prioridade) ou `transcricao` |
+| Endereço | `tipo_logradouro` + `logradouro`/`endereco` + `numero` |
+| Loteamento | `loteamento` |
+| Documentos | `documentos`/`anexos`/`arquivo` — vira link clicável (aceita vários, separados por `;` ou quebra de linha) |
+| Observações | `observacoes`/`obs` |
+
+Qualquer outra propriedade que a feature tiver aparece depois, com o
+nome da coluna como rótulo. Campos sem valor (vazio/nulo) simplesmente
+não aparecem — não precisa "limpar" a planilha/banco antes de exportar.
+Propriedades internas do SIG View (usadas só pra estilo/controle, como a
+cor ou se foi vinculada a um banco) começam com `_` e nunca aparecem.
 
 ## Índice com atualização automática (`<NetworkLink>`)
 

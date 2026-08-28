@@ -57,6 +57,19 @@
     });
   }
 
+  // Monta uma expressão MapLibre que usa a primeira propriedade da
+  // feature (dentre `nomes`) que exista e não esteja vazia, na ordem
+  // dada, e só cai pro `padrao` se nenhuma servir — diferente de um
+  // "coalesce" puro, que aceitaria "" (string vazia) como valor válido.
+  function corComFallback(nomes, padrao) {
+    let expr = padrao;
+    for (let i = nomes.length - 1; i >= 0; i--) {
+      const nome = nomes[i];
+      expr = ["case", ["all", ["has", nome], ["!=", ["get", nome], ""]], ["get", nome], expr];
+    }
+    return expr;
+  }
+
   async function init() {
     const config = await fetchJSON(API.config);
     state.map = createMap(config);
@@ -411,13 +424,20 @@
     state.map.addSource(sourceId, { type: "geojson", data: geojson });
 
     const cor = corPadrao || "#3fa9f5";
-    // Usa a cor definida no próprio KML (_cor_preenchimento/_cor_linha),
-    // quando existir; senão cai para a cor padrão desta camada.
-    const corPreenchimento = ["coalesce", ["get", "_cor_preenchimento"], cor];
-    const opacidadePreenchimento = ["coalesce", ["get", "_opacidade_preenchimento"], 0.25];
-    const corLinha = ["coalesce", ["get", "_cor_linha"], cor];
-    const larguraLinha = ["coalesce", ["get", "_largura_linha"], 2];
-    const corPonto = ["coalesce", ["get", "_cor_ponto"], cor];
+    // Usa a cor definida no próprio polígono/feature, quando existir —
+    // seja do <Style> do KML (_cor_preenchimento/_cor_linha, já
+    // resolvido pelo nosso parser), do padrão "simplestyle" comum em
+    // GeoJSON exportado por outras ferramentas (fill/stroke), ou de um
+    // campo "cor" cru (comum em exports de banco de dados). Só cai pra
+    // cor padrão da camada (palheta) quando a feature não traz nenhuma
+    // dessas informações — inclusive quando o campo existe mas vem em
+    // branco ("" — comum em exports de banco com valor nulo), que um
+    // "coalesce" simples aceitaria como cor válida e quebraria o mapa.
+    const corPreenchimento = corComFallback(["_cor_preenchimento", "fill", "cor", "Cor", "COR"], cor);
+    const opacidadePreenchimento = corComFallback(["_opacidade_preenchimento", "fill-opacity"], 0.25);
+    const corLinha = corComFallback(["_cor_linha", "stroke", "cor", "Cor", "COR"], cor);
+    const larguraLinha = corComFallback(["_largura_linha", "stroke-width"], 2);
+    const corPonto = corComFallback(["_cor_ponto", "marker-color", "cor", "Cor", "COR"], cor);
 
     state.map.addLayer({
       id: fillId,

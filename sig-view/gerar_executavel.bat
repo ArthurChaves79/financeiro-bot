@@ -36,7 +36,7 @@ pip install -r requirements-build.txt
 
 echo.
 echo === Gerando o executavel (pode demorar alguns minutos) ===
-pyinstaller --noconfirm --onefile --name SigView ^
+pyinstaller --noconfirm --onefile --windowed --name SigView ^
   --icon "..\assets\icon.ico" ^
   --add-data "..\frontend;frontend" ^
   --collect-submodules uvicorn ^
@@ -88,6 +88,11 @@ echo  NAO precisa levar GeoJSON nenhum - sem a pasta data\layers
 echo  o SigView.exe abre normal, so sem camadas na lista. Depois
 echo  de colocar os .geojson naquele computador (local ou pasta
 echo  de rede), aponte o caminho em Configuracoes.
+echo.
+echo  Este .exe abre SEM a telinha de console/cmd atras da janela.
+echo  Se algo der errado e a janela nao abrir, o log fica em
+echo  data\sigview.log (do lado do .exe) - da pra ver o que
+echo  aconteceu por la.
 echo ==================================================
 echo.
 pause

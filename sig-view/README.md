@@ -48,6 +48,11 @@ instalado no Windows — não é o Chrome/Edge abrindo por fora, é uma
 janela do próprio SIG View). Só cai de volta pro modo "abre no
 navegador" se o `pywebview` não estiver disponível.
 
+O `SigView.exe` é gerado com `--windowed`, então abre só a janela do
+programa, sem nenhuma telinha de console/cmd atrás. Se algo impedir a
+janela de abrir, o log fica em `data\sigview.log` (do lado do `.exe`)
+em vez de aparecer num terminal.
+
 ## Como rodar
 
 Duas formas — escolha pelo perfil de quem vai usar:

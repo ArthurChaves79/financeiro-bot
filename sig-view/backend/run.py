@@ -9,6 +9,24 @@ navegador padrão e mantém o terminal aberto.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# O .exe é gerado com --windowed (sem a telinha de console/cmd atrás da
+# janela do programa) — no Windows isso deixa sys.stdout/stderr como
+# None, e qualquer coisa que tente escrever neles (incluindo o próprio
+# log do uvicorn) quebra com AttributeError. Redireciona pra um arquivo
+# de log ao lado do .exe antes de mais nada, só quando isso realmente
+# acontece — rodando via `python run.py` (modo terminal normal, com
+# console) continua imprimindo no terminal, sem mudar nada.
+if sys.stdout is None or sys.stderr is None:
+    _base_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    _log_dir = _base_dir / "data"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _log_file = open(_log_dir / "sigview.log", "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or _log_file
+    sys.stderr = sys.stderr or _log_file
+
 import threading
 import time
 import webbrowser

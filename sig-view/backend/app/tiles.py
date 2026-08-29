@@ -293,6 +293,14 @@ PALETAS = {
 
 _FONTE_PADRAO = "Noto Sans Regular"
 
+# Rótulos (nome de rua/bairro) temporariamente desligados — suspeita de
+# quebrar a validação do estilo inteiro no MapLibre em produção (mapa
+# ficou em branco pra um usuário real, mesmo com /tiles/style.json
+# voltando 200 OK). Reativar só depois de confirmar com o console do
+# navegador (SIGVIEW_DEBUG=1 + botão direito -> Inspecionar) qual parte
+# exata está inválida.
+_ROTULOS_ATIVOS = False
+
 
 def _vector_style(tiles_url, glyphs_url, bounds, center, minzoom, maxzoom, nome_paleta: str) -> dict:
     cores = PALETAS.get(nome_paleta, PALETAS["claro"])
@@ -316,11 +324,6 @@ def _vector_style(tiles_url, glyphs_url, bounds, center, minzoom, maxzoom, nome_
     style = {
         "version": 8,
         "name": f"SIG View ({cores['nome']} — OpenMapTiles)",
-        # Glyphs (fonte pros rótulos) — vem de backend/data/fonts/, um
-        # download único e local (ver README, seção "Nomes de rua no
-        # mapa"); sem os arquivos ali, os rótulos só não aparecem (não
-        # quebra o resto do mapa).
-        "glyphs": glyphs_url,
         "sources": {"openmaptiles": source},
         "layers": [
             {"id": "background", "type": "background", "paint": {"background-color": cores["background"]}},
@@ -400,61 +403,70 @@ def _vector_style(tiles_url, glyphs_url, bounds, center, minzoom, maxzoom, nome_
                 "filter": ["==", ["get", "class"], "rail"],
                 "paint": {"line-color": cores["rail"], "line-width": 1},
             },
-            # --- Rótulos: nome de rua (aparece conforme dá zoom) e nome
-            # de bairro/cidade. Usam a mesma fonte (glyphs) — sem os
-            # arquivos de fonte baixados, essas camadas simplesmente não
-            # desenham nada (não quebram o resto do mapa).
-            {
-                "id": "road-major-label",
-                "type": "symbol",
-                "source": "openmaptiles",
-                "source-layer": "transportation_name",
-                "filter": [
-                    "in",
-                    ["get", "class"],
-                    ["literal", ["primary", "secondary", "tertiary", "trunk", "motorway"]],
-                ],
-                "minzoom": 10,
-                "layout": {
-                    "symbol-placement": "line",
-                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
-                    "text-font": [_FONTE_PADRAO],
-                    "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 16, 13],
-                },
-                "paint": rotulo_texto(),
-            },
-            {
-                "id": "road-minor-label",
-                "type": "symbol",
-                "source": "openmaptiles",
-                "source-layer": "transportation_name",
-                "filter": ["in", ["get", "class"], ["literal", ["minor", "service"]]],
-                "minzoom": 14,
-                "layout": {
-                    "symbol-placement": "line",
-                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
-                    "text-font": [_FONTE_PADRAO],
-                    "text-size": 11,
-                },
-                "paint": rotulo_texto(cor_dim=True),
-            },
-            {
-                "id": "place-label",
-                "type": "symbol",
-                "source": "openmaptiles",
-                "source-layer": "place",
-                "filter": ["in", ["get", "class"], ["literal", ["city", "town", "village", "suburb", "neighbourhood"]]],
-                "layout": {
-                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
-                    "text-font": [_FONTE_PADRAO],
-                    "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 14, 15],
-                    "text-transform": "uppercase",
-                    "text-letter-spacing": 0.05,
-                },
-                "paint": rotulo_texto(),
-            },
         ],
     }
+
+    if _ROTULOS_ATIVOS:
+        # Rótulos: nome de rua (aparece conforme dá zoom) e nome de
+        # bairro/cidade. Usam a mesma fonte (glyphs) — sem os arquivos
+        # de fonte baixados, essas camadas simplesmente não desenham
+        # nada (em teoria não deveria quebrar o resto do mapa, mas está
+        # desligado por padrão até confirmar isso — ver _ROTULOS_ATIVOS).
+        style["glyphs"] = glyphs_url
+        style["layers"].extend(
+            [
+                {
+                    "id": "road-major-label",
+                    "type": "symbol",
+                    "source": "openmaptiles",
+                    "source-layer": "transportation_name",
+                    "filter": [
+                        "in",
+                        ["get", "class"],
+                        ["literal", ["primary", "secondary", "tertiary", "trunk", "motorway"]],
+                    ],
+                    "minzoom": 10,
+                    "layout": {
+                        "symbol-placement": "line",
+                        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                        "text-font": [_FONTE_PADRAO],
+                        "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 16, 13],
+                    },
+                    "paint": rotulo_texto(),
+                },
+                {
+                    "id": "road-minor-label",
+                    "type": "symbol",
+                    "source": "openmaptiles",
+                    "source-layer": "transportation_name",
+                    "filter": ["in", ["get", "class"], ["literal", ["minor", "service"]]],
+                    "minzoom": 14,
+                    "layout": {
+                        "symbol-placement": "line",
+                        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                        "text-font": [_FONTE_PADRAO],
+                        "text-size": 11,
+                    },
+                    "paint": rotulo_texto(cor_dim=True),
+                },
+                {
+                    "id": "place-label",
+                    "type": "symbol",
+                    "source": "openmaptiles",
+                    "source-layer": "place",
+                    "filter": ["in", ["get", "class"], ["literal", ["city", "town", "village", "suburb", "neighbourhood"]]],
+                    "layout": {
+                        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                        "text-font": [_FONTE_PADRAO],
+                        "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 14, 15],
+                        "text-transform": "uppercase",
+                        "text-letter-spacing": 0.05,
+                    },
+                    "paint": rotulo_texto(),
+                },
+            ]
+        )
+
     if center:
         style["center"] = center
     return style

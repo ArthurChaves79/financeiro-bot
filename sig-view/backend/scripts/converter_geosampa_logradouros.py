@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 import sys
 import unicodedata
@@ -132,6 +133,13 @@ def linhas_de_features(
             sem_geometria += 1
             continue
         lon, lat = centro
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            # Geometria degenerada na origem (ex: coordenada zerada usada
+            # como "sem dado") pode gerar um centro NaN/infinito — o
+            # SQLite trata NaN como se fosse NULL, então isso derrubaria
+            # a importação inteira lá na frente se deixasse passar.
+            sem_geometria += 1
+            continue
 
         indice = _indexar_propriedades(props)
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import sqlite3
 import sys
 from pathlib import Path
@@ -80,7 +81,7 @@ def rebuild_fts(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> list[tuple]:
+def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> tuple[list[tuple], int]:
     with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         missing = [c for c in REQUIRED_COLUMNS if column_map.get(c, c) not in (reader.fieldnames or [])]
@@ -91,6 +92,7 @@ def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> list[tuple]:
             )
 
         rows = []
+        ignoradas = 0
         for row in reader:
             def col(name: str) -> str:
                 return (row.get(column_map.get(name, name)) or "").strip()
@@ -99,7 +101,17 @@ def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> list[tuple]:
                 lat = float(col("lat"))
                 lon = float(col("lon"))
             except ValueError:
+                ignoradas += 1
                 continue  # ignora linhas sem coordenada válida
+
+            # float() aceita "nan"/"inf" sem erro, mas o SQLite trata NaN
+            # como se fosse NULL internamente — sem este checa, uma única
+            # linha com coordenada inválida (geometria degenerada na
+            # origem, ex: um ponto (0,0) usado como "sem dado") derrubava
+            # a importação inteira com "NOT NULL constraint failed".
+            if not (math.isfinite(lat) and math.isfinite(lon)):
+                ignoradas += 1
+                continue
 
             rows.append(
                 (
@@ -112,7 +124,7 @@ def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> list[tuple]:
                     lon,
                 )
             )
-        return rows
+        return rows, ignoradas
 
 
 def build(csv_paths: Path | list[Path], db_path: Path, column_map: dict[str, str]) -> int:
@@ -131,7 +143,9 @@ def build(csv_paths: Path | list[Path], db_path: Path, column_map: dict[str, str
 
     count = 0
     for csv_path in csv_paths:
-        rows = _ler_linhas(csv_path, column_map)
+        rows, ignoradas = _ler_linhas(csv_path, column_map)
+        if ignoradas:
+            print(f"[aviso] {ignoradas} linha(s) de {csv_path} ignorada(s) por não terem coordenada válida.")
         conn.executemany(
             """INSERT INTO enderecos (tipo, logradouro, bairro, cidade, cep, lat, lon)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",

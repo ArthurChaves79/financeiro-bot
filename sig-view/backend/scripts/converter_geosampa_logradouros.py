@@ -54,11 +54,28 @@ from app.geoutil import centroide_aproximado  # noqa: E402
 # outros portais de dados abertos municipais, sem precisar bater
 # exatamente com um nome fixo.
 CAMPOS_CONHECIDOS = {
-    "tipo_logradouro": ["tipolog", "tipologr", "tipologradouro", "tlogrado", "dsctipologradouro"],
-    "nome": ["nome", "nomecompleto", "nomelogradouro", "logradouro", "nomelog", "nmlogradouro", "dsnome"],
+    # "lgtipo"/"lgnome"/etc. são os nomes reais da camada oficial do
+    # GeoSampa "Eixo de Logradouro" (SIRGAS_GPKG_logradouronbl / _nbl):
+    # lg_tipo (ex: "AV", "R"), lg_prep (ex: "DO"), lg_titulo (ex: "DR"),
+    # lg_nome (ex: "JAGUARE") — o nome completo da rua é a junção dos 4,
+    # nessa ordem, pulando os vazios.
+    "tipo_logradouro": ["tipolog", "tipologr", "tipologradouro", "tlogrado", "dsctipologradouro", "lgtipo"],
+    "preposicao": ["lgprep", "prep", "preposicao"],
+    "titulo": ["lgtitulo", "titulo"],
+    "nome": ["nome", "nomecompleto", "nomelogradouro", "logradouro", "nomelog", "nmlogradouro", "dsnome", "lgnome"],
     "bairro": ["bairro", "nomebairro", "nmbairro", "dsbairro"],
     "distrito": ["distrito", "nomedistrito", "nmdistrito", "dsdistrito"],
     "cep": ["cep", "ceplogr", "codcep", "nucep"],
+}
+
+# lg_tipo do GeoSampa vem abreviado (ex: "AV", "R") — expande pros nomes
+# por extenso, só pra ficar mais legível na busca/no painel; se o
+# código não estiver aqui, mantém como veio (não quebra nada).
+_ABREVIACOES_TIPO_LOGRADOURO = {
+    "AV": "Avenida", "R": "Rua", "PC": "Praça", "PCA": "Praça", "TV": "Travessa",
+    "AL": "Alameda", "EST": "Estrada", "ROD": "Rodovia", "VD": "Viaduto",
+    "LGO": "Largo", "PRQ": "Parque", "VL": "Vila", "JD": "Jardim", "CJ": "Conjunto",
+    "VLA": "Vila", "ESTR": "Estrada", "CAM": "Caminho", "PSA": "Passagem",
 }
 
 
@@ -119,6 +136,8 @@ def linhas_de_features(
         indice = _indexar_propriedades(props)
 
         tipo_logradouro = _campo(props, indice, CAMPOS_CONHECIDOS["tipo_logradouro"], mapeamento, "tipo_logradouro")
+        preposicao = _campo(props, indice, CAMPOS_CONHECIDOS["preposicao"], mapeamento, "preposicao")
+        titulo = _campo(props, indice, CAMPOS_CONHECIDOS["titulo"], mapeamento, "titulo")
         nome = _campo(props, indice, CAMPOS_CONHECIDOS["nome"], mapeamento, "nome")
         bairro = _campo(props, indice, CAMPOS_CONHECIDOS["bairro"], mapeamento, "bairro") or \
             _campo(props, indice, CAMPOS_CONHECIDOS["distrito"], mapeamento, "distrito")
@@ -130,7 +149,10 @@ def linhas_de_features(
             logradouro = None
             bairro = bairro or nome
         else:
-            logradouro = f"{tipo_logradouro} {nome}".strip() if tipo_logradouro else (nome or None)
+            tipo_por_extenso = _ABREVIACOES_TIPO_LOGRADOURO.get(tipo_logradouro.upper(), tipo_logradouro) if tipo_logradouro else ""
+            # Nome completo = Tipo + Preposição + Título + Nome, pulando o
+            # que estiver vazio (ex: "Avenida" + "" + "" + "Jaguaré").
+            logradouro = " ".join(p for p in (tipo_por_extenso, preposicao, titulo, nome) if p).strip() or None
 
         if not (logradouro or bairro or cep):
             sem_campo += 1

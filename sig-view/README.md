@@ -190,6 +190,39 @@ sugeridas para montar esse CSV:
 - **IBGE CNEFE** — endereços de todo o estado.
 - **Correios** — base de CEPs, útil para o interior.
 
+### Populando com ruas/CEP do GeoSampa (recomendado para a capital)
+
+`scripts/converter_geosampa_logradouros.py` transforma uma camada
+baixada do GeoSampa direto no CSV acima, sem precisar montar a planilha
+na mão:
+
+1. No [GeoSampa](https://geosampa.prefeitura.sp.gov.br), ache a camada
+   em **Mapa Digital da Cidade** — "Sistema Viário" > "Eixo de
+   Logradouro" pras ruas, ou "Distritos"/"Bairros" pras regiões.
+2. Baixe no formato **GeoJSON** (evita ter que lidar com a projeção do
+   Shapefile — o GeoJSON já sai em latitude/longitude).
+3. Converta e importe:
+
+   ```bash
+   cd backend
+   python scripts/converter_geosampa_logradouros.py logradouros.geojson --tipo endereco --saida ruas.csv
+   python scripts/converter_geosampa_logradouros.py distritos.geojson --tipo bairro --saida bairros.csv
+
+   # os dois csv entram juntos no mesmo índice (build_geocoder_index.py
+   # aceita mais de um arquivo de uma vez, nenhum apaga o outro):
+   python scripts/build_geocoder_index.py ruas.csv bairros.csv
+   ```
+
+O script reconhece sozinho os nomes de coluna mais comuns dessas
+camadas (nome do logradouro, tipo — Rua/Avenida, bairro, CEP); se algum
+não for reconhecido, aponte manualmente com `--map campo=coluna`, ex:
+`--map cep=CD_CEP`.
+
+> Nota: o CEP nas camadas de logradouro do GeoSampa costuma ser
+> incompleto (nem toda rua tem CEP cadastrado na camada) — a busca por
+> nome de rua e bairro funciona plenamente de qualquer forma; CEP é só
+> mais um campo pesquisável quando disponível.
+
 ### Buscar imóveis pelos dados vinculados aos polígonos
 
 Depois de rodar `vincular_poligonos.py` (veja mais abaixo), a camada

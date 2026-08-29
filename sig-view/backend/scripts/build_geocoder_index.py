@@ -80,22 +80,13 @@ def rebuild_fts(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def build(csv_path: Path, db_path: Path, column_map: dict[str, str]) -> int:
-    """Reconstrói o índice de endereços DO ZERO (apaga o banco anterior,
-    inclusive dados de camadas indexados por indexar_camadas.py — rode-o
-    de novo depois se precisar deles de volta)."""
-    if db_path.exists():
-        db_path.unlink()
-
-    conn = ensure_schema(db_path)
-
-    count = 0
+def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> list[tuple]:
     with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
-        missing = [c for c in REQUIRED_COLUMNS if column_map.get(c, c) not in reader.fieldnames]
+        missing = [c for c in REQUIRED_COLUMNS if column_map.get(c, c) not in (reader.fieldnames or [])]
         if missing:
             raise SystemExit(
-                f"Colunas ausentes no CSV: {missing}. "
+                f"Colunas ausentes em {csv_path}: {missing}. "
                 f"Colunas encontradas: {reader.fieldnames}. Use --map para remapear."
             )
 
@@ -121,13 +112,32 @@ def build(csv_path: Path, db_path: Path, column_map: dict[str, str]) -> int:
                     lon,
                 )
             )
+        return rows
 
+
+def build(csv_paths: Path | list[Path], db_path: Path, column_map: dict[str, str]) -> int:
+    """Reconstrói o índice de endereços DO ZERO (apaga o banco anterior,
+    inclusive dados de camadas indexados por indexar_camadas.py — rode-o
+    de novo depois se precisar deles de volta). Aceita mais de um CSV de
+    uma vez (ex: um de ruas e outro de bairros) — todos entram no mesmo
+    índice, sem um sobrescrever o outro."""
+    if isinstance(csv_paths, Path):
+        csv_paths = [csv_paths]
+
+    if db_path.exists():
+        db_path.unlink()
+
+    conn = ensure_schema(db_path)
+
+    count = 0
+    for csv_path in csv_paths:
+        rows = _ler_linhas(csv_path, column_map)
         conn.executemany(
             """INSERT INTO enderecos (tipo, logradouro, bairro, cidade, cep, lat, lon)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             rows,
         )
-        count = len(rows)
+        count += len(rows)
 
     conn.commit()
     rebuild_fts(conn)
@@ -154,19 +164,20 @@ def parse_column_map(pairs: list[str]) -> dict[str, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("csv_path", type=Path, help="CSV de entrada com os endereços")
+    parser.add_argument("csv_path", type=Path, nargs="+", help="CSV(s) de entrada com os endereços (ex: um de ruas e outro de bairros — todos entram no mesmo índice)")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="Caminho do banco SQLite de saída")
     parser.add_argument(
         "--map",
         action="append",
         default=[],
         metavar="coluna_padrao=coluna_no_csv",
-        help="Remapeia nomes de coluna, ex: --map cidade=municipio",
+        help="Remapeia nomes de coluna, ex: --map cidade=municipio (vale pra todos os CSVs passados)",
     )
     args = parser.parse_args()
 
-    if not args.csv_path.exists():
-        sys.exit(f"Arquivo não encontrado: {args.csv_path}")
+    faltando = [p for p in args.csv_path if not p.exists()]
+    if faltando:
+        sys.exit(f"Arquivo(s) não encontrado(s): {faltando}")
 
     column_map = parse_column_map(args.map)
     count = build(args.csv_path, args.db, column_map)

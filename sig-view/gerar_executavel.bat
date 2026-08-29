@@ -77,13 +77,23 @@ if exist data\maps (
 )
 
 echo.
+echo === Levando as fontes dos rotulos (data\fonts), se ja tiver baixado ===
+if exist data\fonts (
+    xcopy /Y /I /E data\fonts "..\data\fonts\" >nul 2>&1
+    echo Pasta data\fonts copiada - nomes de rua/bairro aparecem no mapa.
+) else (
+    echo Nenhuma fonte encontrada ainda - veja o README ("Nomes de rua no
+    echo mapa"^) se quiser que os rotulos apareçam no mapa.
+)
+
+echo.
 echo ==================================================
 echo  Pronto! O arquivo SigView.exe esta em:
 echo  %~dp0SigView.exe
 echo.
 echo  Para instalar num outro computador, copie SO ISSO:
 echo    - SigView.exe
-echo    - a pasta "data" do lado dele (mapa.mbtiles / data\maps)
+echo    - a pasta "data" do lado dele (mapa.mbtiles / data\maps / data\fonts)
 echo  NAO precisa levar GeoJSON nenhum - sem a pasta data\layers
 echo  o SigView.exe abre normal, so sem camadas na lista. Depois
 echo  de colocar os .geojson naquele computador (local ou pasta

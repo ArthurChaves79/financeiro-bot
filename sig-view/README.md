@@ -150,17 +150,60 @@ Isso já está automatizado em `gerar_e_subir_mapa.bat` (Windows) — veja o
 passo a passo completo, sem precisar mexer em linha de comando, em
 [`CONFIGURAR_MAPA_LOCAL.md`](./CONFIGURAR_MAPA_LOCAL.md).
 
-O estilo servido em `/tiles/style.json` é gerado automaticamente
-(enxuto: ruas, água, quadras, limites administrativos — sem rótulos de
-texto nem ícones, pra não depender de fontes/sprites). Se quiser um
-servidor de tiles externo mesmo assim (ex: pra vários SIG View
-compartilharem um só `.mbtiles` pela rede), o `docker-compose.yml`
-(TileServer GL) continua disponível como alternativa.
+O estilo servido em `/tiles/style.json` é gerado automaticamente: ruas,
+água, quadras, limites administrativos e rótulos de nome de
+rua/bairro/cidade (aparecem conforme dá zoom — ver "Nomes de rua no
+mapa" abaixo). Se quiser um servidor de tiles externo mesmo assim (ex:
+pra vários SIG View compartilharem um só `.mbtiles` pela rede), o
+`docker-compose.yml` (TileServer GL) continua disponível como
+alternativa.
 
 Para manter atualizado com mudanças da prefeitura, combine essa base OSM
 com camadas específicas do **GeoSampa** (dados abertos da Prefeitura de
 São Paulo) — essas entram como **camadas** normais (GeoJSON), não como
 tile do mapa base, então atualizam independente da malha de ruas.
+
+### Nomes de rua no mapa
+
+Os nomes de rua/bairro/cidade já vêm no `.mbtiles` gerado pelo
+Planetiler (esquema OpenMapTiles) — não precisa gerar o mapa de novo.
+Só falta a **fonte** (o MapLibre chama isso de "glyphs": arquivos
+`.pbf` pré-renderizados, um por faixa de caracteres — é assim que
+qualquer mapa vetorial desenha texto, não tem como usar uma fonte
+comum do Windows direto).
+
+1. Baixe a pasta `Noto Sans Regular` do repositório
+   [openmaptiles/fonts](https://github.com/openmaptiles/fonts) (código
+   aberto, mantido pelo próprio projeto OpenMapTiles) — é só uma pasta
+   cheia de arquivos `.pbf` pequenos, um download único.
+2. Coloque em `backend/data/fonts/Noto Sans Regular/` (os arquivos
+   `.pbf` direto dentro dessa pasta, ex:
+   `backend/data/fonts/Noto Sans Regular/0-255.pbf`).
+3. Reinicie o SIG View — os rótulos aparecem sozinhos, sem precisar
+   mexer em mais nada.
+
+Sem essa pasta, o mapa funciona normal, só sem os nomes escritos (a
+ausência do arquivo de fonte não quebra nada, os rótulos simplesmente
+não desenham). Quer usar outra fonte? Baixe a pasta correspondente do
+mesmo repositório e ajuste `_FONTE_PADRAO` em `app/tiles.py`.
+
+### Escolher o estilo de cores do mapa
+
+Em ⚙ Configurações, o campo **"Estilo de cores do mapa"** troca entre
+temas prontos — todos usam o mesmo `.mbtiles`, só mudam as cores, então
+não precisa baixar nem gerar nada de novo pra trocar:
+
+- **Claro** — o padrão, fundo bege claro.
+- **Escuro** — fundo escuro, bom pra ambientes com pouca luz.
+- **Alto contraste** — cores mais fortes/saturadas, ruas maiores em
+  vermelho — bom pra quem quer as vias bem destacadas.
+- **Minimalista** — tons neutros e discretos, pra quando as suas
+  próprias camadas (polígonos coloridos) são o foco e o mapa de fundo
+  deve "sumir" um pouco.
+
+Trocar e salvar recarrega a página já com o novo estilo. Pra adicionar
+um tema novo, edite o dicionário `PALETAS` em `backend/app/tiles.py`
+— é só copiar um bloco de cores existente e ajustar.
 
 ### Escolher entre vários mapas
 
@@ -494,6 +537,8 @@ funciona.
 | `GET /api/layers/{id}` | GeoJSON de uma camada |
 | `GET /api/settings` | configurações editáveis atuais (pastas/URL) |
 | `GET /api/maps` | mapas (`.mbtiles`) disponíveis em `data/maps/`, para o dropdown de Configurações |
+| `GET /api/map-styles` | temas de cor disponíveis pro mapa vetorial, para o dropdown de Configurações |
 | `PUT /api/settings` | atualiza e persiste as configurações |
 | `GET /tiles/style.json` | estilo do mapa embutido (lido do `.mbtiles`) |
 | `GET /tiles/{z}/{x}/{y}` | um tile do mapa embutido |
+| `GET /fonts/{fontstack}/{range}.pbf` | glyphs pros rótulos do mapa (ver `data/fonts/`) |

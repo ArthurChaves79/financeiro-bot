@@ -92,6 +92,13 @@ def api_list_maps() -> dict:
     return {"maps": settings_store.list_available_maps()}
 
 
+@app.get("/api/map-styles")
+def api_list_map_styles() -> dict:
+    """Temas de cor do mapa vetorial embutido, pra escolher em
+    Configurações — ver settings_store.list_available_map_styles."""
+    return {"styles": settings_store.list_available_map_styles()}
+
+
 @app.put("/api/settings")
 def api_update_settings(data: dict) -> dict:
     try:
@@ -120,6 +127,17 @@ def tile(z: int, x: int, y: int) -> Response:
         # Fora da área coberta pelo mapa — normal enquanto navega, não é erro.
         return Response(status_code=204)
     return Response(content=data, media_type=content_type)
+
+
+@app.get("/fonts/{fontstack}/{intervalo}.pbf")
+def font_range(fontstack: str, intervalo: str) -> Response:
+    """Glyphs pros rótulos do mapa (nome de rua/bairro) — ver
+    tiles_module.FONTS_DIR e o README ("Nomes de rua no mapa")."""
+    try:
+        data = tiles_module.get_font_range(fontstack, intervalo)
+    except tiles_module.FontNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content=data, media_type="application/x-protobuf")
 
 
 # --- Frontend estático (index.html, css, js) --------------------------------

@@ -621,6 +621,7 @@
       mbtiles_path: document.getElementById("cfg-mbtiles"),
       tile_source_url: document.getElementById("cfg-tile-url"),
       tile_source_type: document.getElementById("cfg-tile-type"),
+      map_style: document.getElementById("cfg-map-style"),
     };
 
     const mapaSelect = document.getElementById("cfg-mapa-select");
@@ -649,10 +650,23 @@
     btn.addEventListener("click", async () => {
       errorEl.hidden = true;
       try {
-        const [current, mapasResp] = await Promise.all([
+        const [current, mapasResp, estilosResp] = await Promise.all([
           fetchJSON(API.settings),
           fetchJSON("/api/maps").catch(() => ({ maps: [] })),
+          fetchJSON("/api/map-styles").catch(() => ({ styles: [] })),
         ]);
+
+        // Popula os <select> dinâmicos ANTES de aplicar os valores
+        // atuais — senão "fields.map_style.value = current.map_style"
+        // não acharia nenhuma <option> ainda pra selecionar.
+        fields.map_style.innerHTML = "";
+        for (const estilo of estilosResp.styles || []) {
+          const opt = document.createElement("option");
+          opt.value = estilo.id;
+          opt.textContent = estilo.nome;
+          fields.map_style.appendChild(opt);
+        }
+
         for (const [key, el] of Object.entries(fields)) {
           if (current[key] != null) el.value = current[key];
         }

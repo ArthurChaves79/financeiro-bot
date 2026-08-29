@@ -16,7 +16,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from .config import settings
+from .config import BASE_DIR, settings
 
 _FORMATO_CONTENT_TYPE = {
     "pbf": "application/x-protobuf",
@@ -34,6 +34,31 @@ class MbtilesUnavailable(RuntimeError):
 
 class TileNotFound(RuntimeError):
     pass
+
+
+class FontNotFound(RuntimeError):
+    pass
+
+
+# Onde ficam os glyphs (fonte pros rótulos do mapa) — um download único
+# (ver README) de arquivos .pbf pré-gerados, organizados em
+# data/fonts/{fontstack}/{range}.pbf (mesmo layout que qualquer servidor
+# de tiles usa). Sem esses arquivos, os rótulos simplesmente não
+# aparecem — o resto do mapa funciona normal.
+FONTS_DIR = BASE_DIR / "data" / "fonts"
+
+
+def get_font_range(fontstack: str, intervalo: str) -> bytes:
+    """Lê um arquivo de glyphs (.pbf) de FONTS_DIR, sem permitir escapar
+    da pasta (path traversal) — mesmo esquema de proteção usado em
+    layers.py pras camadas."""
+    fonts_dir = FONTS_DIR.resolve()
+    candidato = (fonts_dir / fontstack / f"{intervalo}.pbf").resolve()
+    if fonts_dir not in candidato.parents:
+        raise FontNotFound(f"{fontstack}/{intervalo}")
+    if not candidato.is_file():
+        raise FontNotFound(f"{fontstack}/{intervalo}")
+    return candidato.read_bytes()
 
 
 # FastAPI roda cada requisição síncrona numa thread de um pool — em vez
@@ -145,15 +170,17 @@ def build_default_style(base_url: str) -> dict:
     """Monta um style.json básico (MapLibre) pro conteúdo do .mbtiles
     configurado: raster vira um estilo raster simples; vetorial (o caso
     comum, gerado pelo Planetiler no esquema OpenMapTiles) vira um
-    estilo enxuto com ruas, água, quadras e limites administrativos —
-    sem rótulos de texto nem ícones (dispensa fontes/sprites, mantendo
-    tudo 100% autocontido).
+    estilo com ruas, água, quadras, limites administrativos e rótulos
+    de nome de rua/bairro/cidade (aparecem conforme se aproxima —
+    exatamente os dados que o .mbtiles já tem, não precisa gerar de
+    novo). O tema de cores usado é o configurado em `settings.map_style`
+    (⚙ Configurações) — ver PALETAS abaixo.
 
     `base_url` (ex: "http://localhost:8000/") é usado pra montar a URL
-    dos tiles **completa** (com http://host:porta), não só o caminho
-    relativo — janelas embutidas tipo pywebview/WebView2 processam os
-    tiles em Web Workers que, em alguns casos, não conseguem resolver
-    URLs relativas ("/tiles/{z}/{x}/{y}") e falham silenciosamente.
+    dos tiles e das fontes (glyphs) **completa** (com http://host:porta),
+    não só o caminho relativo — janelas embutidas tipo pywebview/WebView2
+    processam os tiles em Web Workers que, em alguns casos, não
+    conseguem resolver URLs relativas e falham silenciosamente.
     """
     meta = get_metadata()
     formato = (meta.get("format") or "pbf").lower()
@@ -161,10 +188,11 @@ def build_default_style(base_url: str) -> dict:
     minzoom = int(float(meta["minzoom"])) if meta.get("minzoom") else 0
     maxzoom = int(float(meta["maxzoom"])) if meta.get("maxzoom") else 14
     tiles_url = base_url.rstrip("/") + "/tiles/{z}/{x}/{y}"
+    glyphs_url = base_url.rstrip("/") + "/fonts/{fontstack}/{range}.pbf"
 
     if formato in ("png", "jpg", "jpeg", "webp"):
         return _raster_style(tiles_url, bounds, center, minzoom, maxzoom)
-    return _vector_style(tiles_url, bounds, center, minzoom, maxzoom)
+    return _vector_style(tiles_url, glyphs_url, bounds, center, minzoom, maxzoom, settings.map_style)
 
 
 def _raster_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
@@ -192,7 +220,83 @@ def _raster_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
     return style
 
 
-def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
+# Temas de cor pro mapa vetorial — todos leem o mesmo .mbtiles, só
+# mudam as cores/opacidades. Escolhido em ⚙ Configurações
+# (settings.map_style); "claro" é o padrão de sempre. Adicionar um tema
+# novo é só copiar um bloco e ajustar as cores, sem mexer em mais nada.
+PALETAS = {
+    "claro": {
+        "nome": "Claro",
+        "background": "#f7f6f2",
+        "landcover": "#e9ecdf",
+        "landuse": "#eae6d8",
+        "water": "#a9cbe0",
+        "building_fill": "#e3ded1",
+        "building_outline": "#d2cab8",
+        "boundary": "#a8a49a",
+        "road_minor": "#d8d4c6",
+        "road_major": "#c9a13b",
+        "rail": "#9a9488",
+        "label_text": "#2b2b2b",
+        "label_halo": "#f7f6f2",
+        "label_text_dim": "#6b6b6b",
+    },
+    "escuro": {
+        "nome": "Escuro",
+        "background": "#1b1e22",
+        "landcover": "#20241f",
+        "landuse": "#23211a",
+        "water": "#163449",
+        "building_fill": "#2b2924",
+        "building_outline": "#38352c",
+        "boundary": "#49463c",
+        "road_minor": "#302e29",
+        "road_major": "#c9a13b",
+        "rail": "#49463c",
+        "label_text": "#e7ecf1",
+        "label_halo": "#1b1e22",
+        "label_text_dim": "#9aa7b4",
+    },
+    "contraste": {
+        "nome": "Alto contraste",
+        "background": "#ffffff",
+        "landcover": "#eef2ea",
+        "landuse": "#f1efe4",
+        "water": "#4f8fc0",
+        "building_fill": "#dcd6c5",
+        "building_outline": "#8f8060",
+        "boundary": "#5a5646",
+        "road_minor": "#9a9488",
+        "road_major": "#c1272d",
+        "rail": "#3a3a3a",
+        "label_text": "#111111",
+        "label_halo": "#ffffff",
+        "label_text_dim": "#3a3a3a",
+    },
+    "minimalista": {
+        "nome": "Minimalista",
+        "background": "#fbfbfa",
+        "landcover": "#f2f2f0",
+        "landuse": "#f2f2f0",
+        "water": "#cfd8dc",
+        "building_fill": "#eceae5",
+        "building_outline": "#dedad0",
+        "boundary": "#c8c5bc",
+        "road_minor": "#e6e3d9",
+        "road_major": "#b8b2a1",
+        "rail": "#d8d4c6",
+        "label_text": "#4a4a4a",
+        "label_halo": "#fbfbfa",
+        "label_text_dim": "#8a8a8a",
+    },
+}
+
+_FONTE_PADRAO = "Noto Sans Regular"
+
+
+def _vector_style(tiles_url, glyphs_url, bounds, center, minzoom, maxzoom, nome_paleta: str) -> dict:
+    cores = PALETAS.get(nome_paleta, PALETAS["claro"])
+
     source = {
         "type": "vector",
         "tiles": [tiles_url],
@@ -202,39 +306,51 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
     if bounds:
         source["bounds"] = bounds
 
+    def rotulo_texto(cor_dim=False):
+        return {
+            "text-color": cores["label_text_dim"] if cor_dim else cores["label_text"],
+            "text-halo-color": cores["label_halo"],
+            "text-halo-width": 1.2,
+        }
+
     style = {
         "version": 8,
-        "name": "SIG View (vetorial local — OpenMapTiles)",
+        "name": f"SIG View ({cores['nome']} — OpenMapTiles)",
+        # Glyphs (fonte pros rótulos) — vem de backend/data/fonts/, um
+        # download único e local (ver README, seção "Nomes de rua no
+        # mapa"); sem os arquivos ali, os rótulos só não aparecem (não
+        # quebra o resto do mapa).
+        "glyphs": glyphs_url,
         "sources": {"openmaptiles": source},
         "layers": [
-            {"id": "background", "type": "background", "paint": {"background-color": "#f7f6f2"}},
+            {"id": "background", "type": "background", "paint": {"background-color": cores["background"]}},
             {
                 "id": "landcover",
                 "type": "fill",
                 "source": "openmaptiles",
                 "source-layer": "landcover",
-                "paint": {"fill-color": "#e9ecdf", "fill-opacity": 0.6},
+                "paint": {"fill-color": cores["landcover"], "fill-opacity": 0.6},
             },
             {
                 "id": "landuse",
                 "type": "fill",
                 "source": "openmaptiles",
                 "source-layer": "landuse",
-                "paint": {"fill-color": "#eae6d8", "fill-opacity": 0.5},
+                "paint": {"fill-color": cores["landuse"], "fill-opacity": 0.5},
             },
             {
                 "id": "water",
                 "type": "fill",
                 "source": "openmaptiles",
                 "source-layer": "water",
-                "paint": {"fill-color": "#a9cbe0"},
+                "paint": {"fill-color": cores["water"]},
             },
             {
                 "id": "waterway",
                 "type": "line",
                 "source": "openmaptiles",
                 "source-layer": "waterway",
-                "paint": {"line-color": "#a9cbe0", "line-width": 1},
+                "paint": {"line-color": cores["water"], "line-width": 1},
             },
             {
                 "id": "building",
@@ -242,7 +358,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "building",
                 "minzoom": 14,
-                "paint": {"fill-color": "#e3ded1", "fill-outline-color": "#d2cab8"},
+                "paint": {"fill-color": cores["building_fill"], "fill-outline-color": cores["building_outline"]},
             },
             {
                 "id": "boundary",
@@ -250,7 +366,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "boundary",
                 "filter": ["<=", ["get", "admin_level"], 6],
-                "paint": {"line-color": "#a8a49a", "line-width": 1, "line-dasharray": [2, 2]},
+                "paint": {"line-color": cores["boundary"], "line-width": 1, "line-dasharray": [2, 2]},
             },
             {
                 "id": "road-minor",
@@ -258,7 +374,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "transportation",
                 "filter": ["in", ["get", "class"], ["literal", ["minor", "service", "track", "path"]]],
-                "paint": {"line-color": "#d8d4c6", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.5, 18, 3]},
+                "paint": {"line-color": cores["road_minor"], "line-width": ["interpolate", ["linear"], ["zoom"], 12, 0.5, 18, 3]},
             },
             {
                 "id": "road-major",
@@ -272,7 +388,7 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 ],
                 "layout": {"line-cap": "round", "line-join": "round"},
                 "paint": {
-                    "line-color": "#c9a13b",
+                    "line-color": cores["road_major"],
                     "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 12, 1.6, 18, 8],
                 },
             },
@@ -282,7 +398,60 @@ def _vector_style(tiles_url, bounds, center, minzoom, maxzoom) -> dict:
                 "source": "openmaptiles",
                 "source-layer": "transportation",
                 "filter": ["==", ["get", "class"], "rail"],
-                "paint": {"line-color": "#9a9488", "line-width": 1},
+                "paint": {"line-color": cores["rail"], "line-width": 1},
+            },
+            # --- Rótulos: nome de rua (aparece conforme dá zoom) e nome
+            # de bairro/cidade. Usam a mesma fonte (glyphs) — sem os
+            # arquivos de fonte baixados, essas camadas simplesmente não
+            # desenham nada (não quebram o resto do mapa).
+            {
+                "id": "road-major-label",
+                "type": "symbol",
+                "source": "openmaptiles",
+                "source-layer": "transportation_name",
+                "filter": [
+                    "in",
+                    ["get", "class"],
+                    ["literal", ["primary", "secondary", "tertiary", "trunk", "motorway"]],
+                ],
+                "minzoom": 10,
+                "layout": {
+                    "symbol-placement": "line",
+                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                    "text-font": [_FONTE_PADRAO],
+                    "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 16, 13],
+                },
+                "paint": rotulo_texto(),
+            },
+            {
+                "id": "road-minor-label",
+                "type": "symbol",
+                "source": "openmaptiles",
+                "source-layer": "transportation_name",
+                "filter": ["in", ["get", "class"], ["literal", ["minor", "service"]]],
+                "minzoom": 14,
+                "layout": {
+                    "symbol-placement": "line",
+                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                    "text-font": [_FONTE_PADRAO],
+                    "text-size": 11,
+                },
+                "paint": rotulo_texto(cor_dim=True),
+            },
+            {
+                "id": "place-label",
+                "type": "symbol",
+                "source": "openmaptiles",
+                "source-layer": "place",
+                "filter": ["in", ["get", "class"], ["literal", ["city", "town", "village", "suburb", "neighbourhood"]]],
+                "layout": {
+                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                    "text-font": [_FONTE_PADRAO],
+                    "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 14, 15],
+                    "text-transform": "uppercase",
+                    "text-letter-spacing": 0.05,
+                },
+                "paint": rotulo_texto(),
             },
         ],
     }

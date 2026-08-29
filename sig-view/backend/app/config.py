@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     tile_source_url: str = "/tiles/style.json"
     tile_source_type: str = "vector"  # "vector" (style.json) ou "raster" (template XYZ)
 
+    # Tema de cores do mapa embutido (vetorial) — ver app/tiles.py PALETAS.
+    # Todos usam o mesmo .mbtiles, só mudam as cores; trocar não exige
+    # gerar o mapa de novo.
+    map_style: str = "claro"
+
     # Visão inicial do mapa: estado de São Paulo.
     map_center_lat: float = -22.19
     map_center_lon: float = -48.79

@@ -93,28 +93,27 @@ def _campo(props: dict, indice: dict[str, str], candidatos: list[str], mapeament
     return ""
 
 
-def converter(
-    geojson_path: Path,
+def linhas_de_features(
+    features: list[tuple[dict, dict]],
     tipo: str,
     cidade: str,
     mapeamento: dict[str, str],
 ) -> list[dict[str, str]]:
-    dados = json.loads(geojson_path.read_text(encoding="utf-8-sig"))
-    features = dados.get("features", [])
-    if not features:
-        sys.exit(f"Nenhuma feature encontrada em {geojson_path} (era esperado um GeoJSON com 'features').")
-
+    """Monta as linhas do CSV a partir de uma lista de (propriedades,
+    geometria) — a geometria já precisa estar em longitude/latitude
+    (GeoJSON-style: {"type": ..., "coordinates": ...}). Compartilhado
+    entre a leitura de GeoJSON (aqui) e de GeoPackage
+    (converter_geopackage_geosampa.py), que só difere em como lê o
+    arquivo de origem, não em como interpreta as colunas."""
     linhas = []
     ignoradas = 0
-    for feature in features:
-        geometry = feature.get("geometry") or {}
-        centro = centroide_aproximado(geometry)
+    for props, geometry in features:
+        centro = centroide_aproximado(geometry or {})
         if centro is None:
             ignoradas += 1
             continue
         lon, lat = centro
 
-        props = feature.get("properties") or {}
         indice = _indexar_propriedades(props)
 
         tipo_logradouro = _campo(props, indice, CAMPOS_CONHECIDOS["tipo_logradouro"], mapeamento, "tipo_logradouro")
@@ -150,6 +149,28 @@ def converter(
     if ignoradas:
         print(f"[aviso] {ignoradas} feature(s) ignorada(s) (sem geometria válida ou sem nenhum campo reconhecido).")
     return linhas
+
+
+def converter(
+    geojson_path: Path,
+    tipo: str,
+    cidade: str,
+    mapeamento: dict[str, str],
+) -> list[dict[str, str]]:
+    dados = json.loads(geojson_path.read_text(encoding="utf-8-sig"))
+    features_geojson = dados.get("features", [])
+    if not features_geojson:
+        sys.exit(f"Nenhuma feature encontrada em {geojson_path} (era esperado um GeoJSON com 'features').")
+
+    features = [(f.get("properties") or {}, f.get("geometry") or {}) for f in features_geojson]
+    return linhas_de_features(features, tipo, cidade, mapeamento)
+
+
+def escrever_csv(linhas: list[dict[str, str]], saida: Path) -> None:
+    with saida.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["tipo", "logradouro", "bairro", "cidade", "cep", "lat", "lon"])
+        writer.writeheader()
+        writer.writerows(linhas)
 
 
 def parse_column_map(pairs: list[str]) -> dict[str, str]:
@@ -191,10 +212,7 @@ def main() -> None:
         )
 
     saida = args.saida or args.geojson_path.with_suffix(".csv")
-    with saida.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["tipo", "logradouro", "bairro", "cidade", "cep", "lat", "lon"])
-        writer.writeheader()
-        writer.writerows(linhas)
+    escrever_csv(linhas, saida)
 
     print(f"Gerado {saida} com {len(linhas)} registro(s).")
     print(f"Agora rode: python scripts/build_geocoder_index.py {saida}")

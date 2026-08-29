@@ -199,24 +199,40 @@ na mão:
 1. No [GeoSampa](https://geosampa.prefeitura.sp.gov.br), ache a camada
    em **Mapa Digital da Cidade** — "Sistema Viário" > "Eixo de
    Logradouro" pras ruas, ou "Distritos"/"Bairros" pras regiões.
-2. Baixe no formato **GeoJSON** (evita ter que lidar com a projeção do
-   Shapefile — o GeoJSON já sai em latitude/longitude).
-3. Converta e importe:
+2. Baixe no formato **GeoJSON** ou **GeoPackage (`.gpkg`)** — nesses
+   dois dá pra ler sem precisar de nenhuma biblioteca externa. Evite
+   Shapefile (`.shp`) se puder escolher: exigiria decodificar um
+   formato binário à parte e ainda separar a projeção do `.prj`.
+3. Converta e importe (o script certo depende do formato baixado):
 
    ```bash
    cd backend
+
+   # se baixou em GeoJSON:
    python scripts/converter_geosampa_logradouros.py logradouros.geojson --tipo endereco --saida ruas.csv
    python scripts/converter_geosampa_logradouros.py distritos.geojson --tipo bairro --saida bairros.csv
+
+   # se baixou em GeoPackage (.gpkg) — primeiro descubra o nome da tabela:
+   python scripts/converter_geopackage_geosampa.py logradouros.gpkg --listar-tabelas
+   python scripts/converter_geopackage_geosampa.py logradouros.gpkg --tabela <nome> --tipo endereco --saida ruas.csv
+   python scripts/converter_geopackage_geosampa.py distritos.gpkg --tabela <nome> --tipo bairro --saida bairros.csv
 
    # os dois csv entram juntos no mesmo índice (build_geocoder_index.py
    # aceita mais de um arquivo de uma vez, nenhum apaga o outro):
    python scripts/build_geocoder_index.py ruas.csv bairros.csv
    ```
 
-O script reconhece sozinho os nomes de coluna mais comuns dessas
-camadas (nome do logradouro, tipo — Rua/Avenida, bairro, CEP); se algum
-não for reconhecido, aponte manualmente com `--map campo=coluna`, ex:
-`--map cep=CD_CEP`.
+Os dois scripts reconhecem sozinhos os nomes de coluna mais comuns
+dessas camadas (nome do logradouro, tipo — Rua/Avenida, bairro, CEP);
+se algum não for reconhecido, aponte manualmente com
+`--map campo=coluna`, ex: `--map cep=CD_CEP`.
+
+O GeoSampa publica os dados em **SIRGAS 2000 / UTM 23S** (coordenadas
+em metros, não em graus) — `converter_geopackage_geosampa.py` detecta
+isso sozinho e converte pra latitude/longitude automaticamente (sem
+precisar de GDAL/pyproj: é uma fórmula de projeção implementada direto
+em Python). Se a camada vier em WGS84 (graus) também funciona sem
+converter nada.
 
 > Nota: o CEP nas camadas de logradouro do GeoSampa costuma ser
 > incompleto (nem toda rua tem CEP cadastrado na camada) — a busca por

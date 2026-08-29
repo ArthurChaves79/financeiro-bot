@@ -136,16 +136,34 @@ def build(csv_paths: Path | list[Path], db_path: Path, column_map: dict[str, str
     if isinstance(csv_paths, Path):
         csv_paths = [csv_paths]
 
+    # Lê e valida TODOS os CSVs antes de tocar no banco existente — se
+    # algum caminho estiver errado/vazio (aponta pra um arquivo sem
+    # linha aproveitável), aborta sem apagar um índice que já
+    # funcionava. Rodar o comando de novo por engano, ou com um caminho
+    # errado, não deve conseguir zerar um índice de centenas de
+    # milhares de registros.
+    lidos = []
+    for csv_path in csv_paths:
+        rows, ignoradas = _ler_linhas(csv_path, column_map)
+        if ignoradas:
+            print(f"[aviso] {ignoradas} linha(s) de {csv_path} ignorada(s) por não terem coordenada válida.")
+        lidos.append((csv_path, rows))
+
+    total = sum(len(rows) for _, rows in lidos)
+    if total == 0:
+        raise SystemExit(
+            "Nenhum registro válido em nenhum dos CSVs informados — nada foi alterado "
+            f"no banco existente ({db_path}), pra não apagar um índice que já funcionava. "
+            "Confira o caminho do(s) CSV(s)."
+        )
+
     if db_path.exists():
         db_path.unlink()
 
     conn = ensure_schema(db_path)
 
     count = 0
-    for csv_path in csv_paths:
-        rows, ignoradas = _ler_linhas(csv_path, column_map)
-        if ignoradas:
-            print(f"[aviso] {ignoradas} linha(s) de {csv_path} ignorada(s) por não terem coordenada válida.")
+    for csv_path, rows in lidos:
         conn.executemany(
             """INSERT INTO enderecos (tipo, logradouro, bairro, cidade, cep, lat, lon)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",

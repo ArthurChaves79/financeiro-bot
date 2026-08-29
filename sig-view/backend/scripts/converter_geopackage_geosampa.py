@@ -231,18 +231,35 @@ def ler_features(gpkg_path: Path, tabela: str) -> list[tuple[dict, dict]]:
         idx_geom = colunas.index(col_geom)
 
         features = []
+        total = 0
+        sem_blob = 0
+        blob_nao_decodificado = 0
+        exemplo_blob = None
         for row in cursor:
+            total += 1
             blob = row[idx_geom]
             if blob is None:
+                sem_blob += 1
                 continue
             geometry = _geometria_do_gpkg_blob(blob)
             if geometry is None:
+                blob_nao_decodificado += 1
+                if exemplo_blob is None:
+                    exemplo_blob = blob
                 continue
             if reprojetar is not None:
                 zona, norte = reprojetar
                 geometry = _reprojetar(geometry, zona, norte)
             props = {colunas[i]: row[i] for i in range(len(colunas)) if i != idx_geom}
             features.append((props, geometry))
+
+        if blob_nao_decodificado:
+            print(f"[aviso] {blob_nao_decodificado} de {total} feature(s) com geometria em formato não "
+                  f"reconhecido (tipo de geometria não suportado por este script).")
+            if exemplo_blob:
+                print(f"        Cabeçalho de uma delas, pra diagnosticar: {exemplo_blob[:16].hex()}")
+        if sem_blob:
+            print(f"[aviso] {sem_blob} de {total} feature(s) sem geometria (coluna nula).")
         return features
     finally:
         conn.close()

@@ -106,11 +106,13 @@ def linhas_de_features(
     (converter_geopackage_geosampa.py), que só difere em como lê o
     arquivo de origem, não em como interpreta as colunas."""
     linhas = []
-    ignoradas = 0
+    sem_geometria = 0
+    sem_campo = 0
+    props_exemplo = None
     for props, geometry in features:
         centro = centroide_aproximado(geometry or {})
         if centro is None:
-            ignoradas += 1
+            sem_geometria += 1
             continue
         lon, lat = centro
 
@@ -131,7 +133,9 @@ def linhas_de_features(
             logradouro = f"{tipo_logradouro} {nome}".strip() if tipo_logradouro else (nome or None)
 
         if not (logradouro or bairro or cep):
-            ignoradas += 1
+            sem_campo += 1
+            if props_exemplo is None:
+                props_exemplo = props
             continue
 
         linhas.append(
@@ -146,8 +150,15 @@ def linhas_de_features(
             }
         )
 
-    if ignoradas:
-        print(f"[aviso] {ignoradas} feature(s) ignorada(s) (sem geometria válida ou sem nenhum campo reconhecido).")
+    if sem_geometria:
+        print(f"[aviso] {sem_geometria} feature(s) ignorada(s) por não terem geometria válida/decodificável.")
+    if sem_campo:
+        print(f"[aviso] {sem_campo} feature(s) ignorada(s) por não terem nenhum campo reconhecido "
+              f"(nome/tipo/bairro/cep) — use --map pra apontar as colunas certas.")
+        if props_exemplo:
+            print("        Colunas encontradas numa dessas features (nome=valor):")
+            for chave, valor in props_exemplo.items():
+                print(f"          {chave!r} = {valor!r}")
     return linhas
 
 

@@ -27,6 +27,7 @@ if sys.stdout is None or sys.stderr is None:
     sys.stdout = sys.stdout or _log_file
     sys.stderr = sys.stderr or _log_file
 
+import os
 import threading
 import time
 import webbrowser
@@ -35,6 +36,14 @@ import uvicorn
 
 from app.config import settings
 from app.main import app
+
+# No backend WebView2 (Windows), debug=True do pywebview não só habilita
+# o "Inspecionar" pelo botão direito — em várias versões ele já abre a
+# janela do DevTools sozinho, junto com o programa. Isso é útil enquanto
+# se está desenvolvendo, mas não faz sentido ir pros 78 computadores da
+# empresa assim. Fica desligado por padrão; quem precisar diagnosticar
+# algo é só abrir com a variável de ambiente SIGVIEW_DEBUG=1 antes.
+DEBUG = os.environ.get("SIGVIEW_DEBUG") == "1"
 
 
 def _run_server() -> None:
@@ -56,10 +65,12 @@ def main() -> None:
 
     if webview is not None:
         webview.create_window("SIG View", url, width=1366, height=850, min_size=(900, 600))
-        # debug=True habilita clicar com o botao direito -> "Inspecionar"
-        # dentro da propria janela do programa (equivalente ao F12 do
-        # navegador) - util pra diagnosticar problemas de carregamento.
-        webview.start(debug=True)  # bloqueia até a janela ser fechada; o programa encerra junto
+        # debug=True (só com SIGVIEW_DEBUG=1) habilita clicar com o botao
+        # direito -> "Inspecionar" dentro da propria janela do programa
+        # (equivalente ao F12 do navegador) - util pra diagnosticar
+        # problemas de carregamento, mas fica desligado por padrão (ver
+        # comentário da constante DEBUG acima).
+        webview.start(debug=DEBUG)  # bloqueia até a janela ser fechada; o programa encerra junto
     else:
         webbrowser.open(url)
         # sem janela própria, o processo precisa continuar vivo servindo o

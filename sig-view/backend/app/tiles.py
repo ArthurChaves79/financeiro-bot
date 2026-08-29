@@ -293,13 +293,18 @@ PALETAS = {
 
 _FONTE_PADRAO = "Noto Sans Regular"
 
-# Rótulos (nome de rua/bairro) temporariamente desligados — suspeita de
-# quebrar a validação do estilo inteiro no MapLibre em produção (mapa
-# ficou em branco pra um usuário real, mesmo com /tiles/style.json
-# voltando 200 OK). Reativar só depois de confirmar com o console do
-# navegador (SIGVIEW_DEBUG=1 + botão direito -> Inspecionar) qual parte
-# exata está inválida.
-_ROTULOS_ATIVOS = False
+# Rótulos ligados um de cada vez, testando com o usuário real entre
+# cada passo — a primeira tentativa (todos de uma vez) deixou o mapa
+# em branco sem erro visível, e sem acesso a um navegador de verdade
+# aqui pra reproduzir, é mais seguro isolar qual camada é a culpada do
+# que tentar tudo de novo. "place" (nome de bairro/cidade, um ponto) é
+# o mais simples; os de rua usam symbol-placement=line, que precisa
+# calcular onde encaixar o texto ao longo da geometria da via — mais
+# arriscado com dado real (linha degenerada, auto-interseção etc.).
+_ROTULO_PLACE_ATIVO = True
+_ROTULO_ROAD_MAJOR_ATIVO = False
+_ROTULO_ROAD_MINOR_ATIVO = False
+_ALGUM_ROTULO_ATIVO = _ROTULO_PLACE_ATIVO or _ROTULO_ROAD_MAJOR_ATIVO or _ROTULO_ROAD_MINOR_ATIVO
 
 
 def _vector_style(tiles_url, glyphs_url, bounds, center, minzoom, maxzoom, nome_paleta: str) -> dict:
@@ -406,66 +411,70 @@ def _vector_style(tiles_url, glyphs_url, bounds, center, minzoom, maxzoom, nome_
         ],
     }
 
-    if _ROTULOS_ATIVOS:
-        # Rótulos: nome de rua (aparece conforme dá zoom) e nome de
-        # bairro/cidade. Usam a mesma fonte (glyphs) — sem os arquivos
-        # de fonte baixados, essas camadas simplesmente não desenham
-        # nada (em teoria não deveria quebrar o resto do mapa, mas está
-        # desligado por padrão até confirmar isso — ver _ROTULOS_ATIVOS).
+    if _ALGUM_ROTULO_ATIVO:
+        # Sem "glyphs" no estilo, qualquer camada com text-field é
+        # inválida (a spec exige essa chave se algum layer usa texto) —
+        # só entra quando pelo menos um rótulo está ligado.
         style["glyphs"] = glyphs_url
-        style["layers"].extend(
-            [
-                {
-                    "id": "road-major-label",
-                    "type": "symbol",
-                    "source": "openmaptiles",
-                    "source-layer": "transportation_name",
-                    "filter": [
-                        "in",
-                        ["get", "class"],
-                        ["literal", ["primary", "secondary", "tertiary", "trunk", "motorway"]],
-                    ],
-                    "minzoom": 10,
-                    "layout": {
-                        "symbol-placement": "line",
-                        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
-                        "text-font": [_FONTE_PADRAO],
-                        "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 16, 13],
-                    },
-                    "paint": rotulo_texto(),
+
+        novas_camadas = []
+
+        if _ROTULO_PLACE_ATIVO:
+            novas_camadas.append({
+                "id": "place-label",
+                "type": "symbol",
+                "source": "openmaptiles",
+                "source-layer": "place",
+                "filter": ["in", ["get", "class"], ["literal", ["city", "town", "village", "suburb", "neighbourhood"]]],
+                "layout": {
+                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                    "text-font": [_FONTE_PADRAO],
+                    "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 14, 15],
+                    "text-transform": "uppercase",
+                    "text-letter-spacing": 0.05,
                 },
-                {
-                    "id": "road-minor-label",
-                    "type": "symbol",
-                    "source": "openmaptiles",
-                    "source-layer": "transportation_name",
-                    "filter": ["in", ["get", "class"], ["literal", ["minor", "service"]]],
-                    "minzoom": 14,
-                    "layout": {
-                        "symbol-placement": "line",
-                        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
-                        "text-font": [_FONTE_PADRAO],
-                        "text-size": 11,
-                    },
-                    "paint": rotulo_texto(cor_dim=True),
+                "paint": rotulo_texto(),
+            })
+
+        if _ROTULO_ROAD_MAJOR_ATIVO:
+            novas_camadas.append({
+                "id": "road-major-label",
+                "type": "symbol",
+                "source": "openmaptiles",
+                "source-layer": "transportation_name",
+                "filter": [
+                    "in",
+                    ["get", "class"],
+                    ["literal", ["primary", "secondary", "tertiary", "trunk", "motorway"]],
+                ],
+                "minzoom": 10,
+                "layout": {
+                    "symbol-placement": "line",
+                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                    "text-font": [_FONTE_PADRAO],
+                    "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 16, 13],
                 },
-                {
-                    "id": "place-label",
-                    "type": "symbol",
-                    "source": "openmaptiles",
-                    "source-layer": "place",
-                    "filter": ["in", ["get", "class"], ["literal", ["city", "town", "village", "suburb", "neighbourhood"]]],
-                    "layout": {
-                        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
-                        "text-font": [_FONTE_PADRAO],
-                        "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 14, 15],
-                        "text-transform": "uppercase",
-                        "text-letter-spacing": 0.05,
-                    },
-                    "paint": rotulo_texto(),
+                "paint": rotulo_texto(),
+            })
+
+        if _ROTULO_ROAD_MINOR_ATIVO:
+            novas_camadas.append({
+                "id": "road-minor-label",
+                "type": "symbol",
+                "source": "openmaptiles",
+                "source-layer": "transportation_name",
+                "filter": ["in", ["get", "class"], ["literal", ["minor", "service"]]],
+                "minzoom": 14,
+                "layout": {
+                    "symbol-placement": "line",
+                    "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+                    "text-font": [_FONTE_PADRAO],
+                    "text-size": 11,
                 },
-            ]
-        )
+                "paint": rotulo_texto(cor_dim=True),
+            })
+
+        style["layers"].extend(novas_camadas)
 
     if center:
         style["center"] = center

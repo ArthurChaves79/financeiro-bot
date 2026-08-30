@@ -291,7 +291,7 @@ PALETAS = {
     },
 }
 
-_FONTE_PADRAO = "Noto Sans"
+_FONTE_PADRAO = "Noto Sans Regular"
 
 # Causa raiz da tela em branco encontrada e corrigida: a rota /fonts/
 # devolvia um erro 404 com corpo em JSON quando a fonte não estava

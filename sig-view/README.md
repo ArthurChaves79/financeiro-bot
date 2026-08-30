@@ -172,13 +172,16 @@ Só falta a **fonte** (o MapLibre chama isso de "glyphs": arquivos
 qualquer mapa vetorial desenha texto, não tem como usar uma fonte
 comum do Windows direto).
 
-1. Baixe o repositório [openmaptiles/fonts](https://github.com/openmaptiles/fonts)
-   (código aberto, mantido pelo próprio projeto OpenMapTiles) — botão
-   verde "Code" → "Download ZIP".
-2. Dentro do `.zip` extraído, ache a subpasta **`Noto Sans`**.
-3. Copie essa subpasta pra `backend/data/fonts/Noto Sans/` (os
-   arquivos `.pbf` direto dentro dela, ex:
-   `backend/data/fonts/Noto Sans/0-255.pbf`).
+1. Acesse a aba **"Releases"** do repositório
+   [openmaptiles/fonts](https://github.com/openmaptiles/fonts/releases)
+   (código aberto, mantido pelo próprio projeto OpenMapTiles) — o
+   código-fonte do repositório só tem as fontes originais (`.ttf`); o
+   resultado já processado (`.pbf`, o que o MapLibre precisa) fica
+   anexado como arquivo de download numa versão publicada ali.
+2. Baixe e extraia; ache a subpasta **`Noto Sans Regular`**.
+3. Copie essa subpasta pra `backend/data/fonts/Noto Sans Regular/`
+   (os arquivos `.pbf` direto dentro dela, ex:
+   `backend/data/fonts/Noto Sans Regular/0-255.pbf`).
 4. Reinicie o SIG View — os rótulos aparecem sozinhos, sem precisar
    mexer em mais nada.
 

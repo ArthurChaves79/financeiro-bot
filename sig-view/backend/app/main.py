@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from . import layers as layers_module
+from . import manutencao as manutencao_module
 from . import search as search_module
 from . import settings_store
 from . import tiles as tiles_module
@@ -114,6 +115,32 @@ def api_update_settings(data: dict) -> dict:
         return settings_store.update_settings(data)
     except settings_store.InvalidSettings as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# --- Painel de manutenção (rodar scripts sem terminal) — ver app/manutencao.py
+
+@app.get("/api/manutencao/tarefas")
+def api_manutencao_tarefas() -> dict:
+    return {"tarefas": manutencao_module.listar_tarefas()}
+
+
+@app.post("/api/manutencao/executar")
+def api_manutencao_executar(data: dict) -> dict:
+    tarefa_id = str(data.get("tarefa_id") or "")
+    parametros = data.get("parametros") or {}
+    try:
+        execucao_id = manutencao_module.iniciar_execucao(tarefa_id, parametros)
+    except manutencao_module.TarefaInvalida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"execucao_id": execucao_id}
+
+
+@app.get("/api/manutencao/status/{execucao_id}")
+def api_manutencao_status(execucao_id: str) -> dict:
+    try:
+        return manutencao_module.obter_status(execucao_id)
+    except manutencao_module.TarefaInvalida as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # --- Servidor de tiles embutido (lê direto de um .mbtiles) ------------------

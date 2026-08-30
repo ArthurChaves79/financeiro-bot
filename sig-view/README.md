@@ -135,6 +135,31 @@ instalação automatizada já sair configurada:
 Se `data/config.json` existir (porque alguém já salvou algo pela tela de
 Configurações), ele tem prioridade sobre o `.env`.
 
+## Painel de manutenção (sem terminal)
+
+Clique em **🔧 Manutenção** no topo da página para rodar, direto pela
+interface, as três tarefas mais comuns do dia a dia — sem precisar
+abrir um terminal nem lembrar o comando exato:
+
+- **Reindexar camadas da pasta** — equivale a rodar
+  `scripts/indexar_pasta_toda.py`.
+- **Reconstruir índice de busca (a partir de CSV)** — equivale a rodar
+  `scripts/build_geocoder_index.py`.
+- **Vincular polígonos a um banco existente** — equivale a rodar
+  `scripts/vincular_poligonos.py`.
+
+Escolha a tarefa, preencha os campos (os mesmos parâmetros que você
+digitaria na linha de comando — veja as seções abaixo para o que cada
+um significa) e clique em **Rodar**. O andamento (a mesma saída que
+apareceria no terminal) fica visível ali, atualizando sozinho, até
+terminar com sucesso ou erro. Só uma tarefa roda por vez.
+
+Os scripts mais específicos (conversão de GeoPackage/GeoJSON do
+GeoSampa, correção de geometrias, diagnóstico de `.mbtiles` etc.)
+continuam só por linha de comando mesmo — o painel cobre as tarefas
+que se repetem com mais frequência depois que os dados já estão
+preparados.
+
 ## Tiles de ruas (o mapa base)
 
 O próprio SIG View serve o mapa sozinho, lendo direto de um arquivo

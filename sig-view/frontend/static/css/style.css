@@ -894,6 +894,117 @@ html, body {
   font-weight: 500;
 }
 
+/* Painel de manutenção (🔧) — mesmo padrão visual do de Configurações
+   (overlay + cartão central), só mais largo pra caber o log de saída
+   das tarefas. */
+#maintenance-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+#maintenance-overlay[hidden] {
+  display: none;
+}
+
+#maintenance-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 620px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+#maintenance-panel h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+#maintenance-panel .hint {
+  margin: 0 0 20px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+#maintenance-panel label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 14px 0 4px;
+}
+
+#maintenance-panel input,
+#maintenance-panel select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+#maintenance-panel input:focus,
+#maintenance-panel select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#maint-tarefa-descricao {
+  margin-top: 6px !important;
+}
+
+.maint-campo-ajuda {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+#maintenance-error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: #f66;
+}
+
+#maintenance-log-wrap {
+  margin-top: 14px;
+}
+
+#maintenance-log {
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#maintenance-status {
+  margin: 8px 0 0 !important;
+}
+
+#maintenance-status.erro {
+  color: #f66;
+}
+
+#maintenance-status.concluido {
+  color: #6c6;
+}
+
 #version-banner-fechar {
   border: none;
   background: transparent;

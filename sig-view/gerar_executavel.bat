@@ -39,6 +39,7 @@ echo === Gerando o executavel (pode demorar alguns minutos) ===
 pyinstaller --noconfirm --onefile --windowed --name SigView ^
   --icon "..\assets\icon.ico" ^
   --add-data "..\frontend;frontend" ^
+  --add-data "scripts;scripts" ^
   --collect-submodules uvicorn ^
   --collect-all webview ^
   --collect-all clr_loader ^

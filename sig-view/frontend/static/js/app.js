@@ -11,6 +11,9 @@
     layer: (id) => `/api/layers/${encodeURIComponent(id)}`,
     settings: "/api/settings",
     version: "/api/version",
+    manutencaoTarefas: "/api/manutencao/tarefas",
+    manutencaoExecutar: "/api/manutencao/executar",
+    manutencaoStatus: (id) => `/api/manutencao/status/${encodeURIComponent(id)}`,
   };
 
   const state = {
@@ -94,6 +97,7 @@
     setupMeasure();
     setupExportarImagem();
     setupVizinhos();
+    setupManutencao();
     checarVersaoNova();
   }
 
@@ -1339,6 +1343,199 @@
       errorEl.textContent = msg;
       errorEl.hidden = false;
     }
+  }
+
+  // Painel de manutenção (🔧) — roda de dentro do programa os scripts
+  // que antes só davam pra rodar via terminal (reindexar camadas,
+  // reconstruir o índice de busca, vincular polígonos a um banco
+  // existente). O catálogo de tarefas/campos vem do backend (ver
+  // app/manutencao.py) pra não duplicar aqui os nomes/padrões de cada
+  // parâmetro; o formulário é montado dinamicamente a partir dele.
+  function setupManutencao() {
+    const btn = document.getElementById("maintenance-btn");
+    const overlay = document.getElementById("maintenance-overlay");
+    const closeBtn = document.getElementById("maintenance-close");
+    const runBtn = document.getElementById("maintenance-run");
+    const tarefaSelect = document.getElementById("maint-tarefa-select");
+    const descricaoEl = document.getElementById("maint-tarefa-descricao");
+    const camposEl = document.getElementById("maint-campos");
+    const errorEl = document.getElementById("maintenance-error");
+    const logWrap = document.getElementById("maintenance-log-wrap");
+    const logEl = document.getElementById("maintenance-log");
+    const statusEl = document.getElementById("maintenance-status");
+
+    let tarefas = [];
+    let pollTimer = null;
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    }
+
+    function pararPoll() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    // Cada tarefa declara seus próprios campos (nome, rótulo, se é
+    // obrigatório, valor padrão, texto de ajuda, se aceita lista) — só
+    // precisamos de um <input> de texto genérico por campo, sem
+    // conhecer os detalhes de cada tarefa aqui.
+    function renderCampos(tarefa) {
+      camposEl.innerHTML = "";
+      for (const campo of tarefa.campos || []) {
+        const label = document.createElement("label");
+        label.setAttribute("for", `maint-campo-${campo.nome}`);
+        label.textContent = campo.rotulo + (campo.obrigatorio ? "" : " (opcional)");
+        camposEl.appendChild(label);
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.id = `maint-campo-${campo.nome}`;
+        input.dataset.campo = campo.nome;
+        input.value = campo.padrao || "";
+        camposEl.appendChild(input);
+
+        if (campo.ajuda) {
+          const ajuda = document.createElement("p");
+          ajuda.className = "maint-campo-ajuda";
+          ajuda.textContent = campo.ajuda;
+          camposEl.appendChild(ajuda);
+        }
+      }
+    }
+
+    function tarefaSelecionada() {
+      return tarefas.find((t) => t.id === tarefaSelect.value);
+    }
+
+    tarefaSelect.addEventListener("change", () => {
+      const tarefa = tarefaSelecionada();
+      if (!tarefa) return;
+      descricaoEl.textContent = tarefa.descricao;
+      renderCampos(tarefa);
+    });
+
+    btn.addEventListener("click", async () => {
+      errorEl.hidden = true;
+      logWrap.hidden = true;
+      logEl.textContent = "";
+      statusEl.textContent = "";
+      statusEl.className = "hint";
+      runBtn.disabled = false;
+      runBtn.textContent = "Rodar";
+      tarefaSelect.disabled = false;
+      pararPoll();
+
+      try {
+        const resp = await fetchJSON(API.manutencaoTarefas);
+        tarefas = resp.tarefas || [];
+        tarefaSelect.innerHTML = "";
+        for (const tarefa of tarefas) {
+          const opt = document.createElement("option");
+          opt.value = tarefa.id;
+          opt.textContent = tarefa.nome;
+          tarefaSelect.appendChild(opt);
+        }
+        if (tarefas.length) {
+          tarefaSelect.value = tarefas[0].id;
+          descricaoEl.textContent = tarefas[0].descricao;
+          renderCampos(tarefas[0]);
+        }
+      } catch (err) {
+        showError(`Não foi possível carregar as tarefas: ${err.message}`);
+      }
+      overlay.hidden = false;
+    });
+
+    closeBtn.addEventListener("click", () => {
+      // A tarefa continua rodando no servidor mesmo fechando o painel
+      // (só para de acompanhar o log aqui) — reabrir e escolher a
+      // mesma tarefa de novo não retoma o acompanhamento, mas rodar
+      // outra tarefa antes dela terminar é bloqueado pelo backend.
+      pararPoll();
+      overlay.hidden = true;
+    });
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        pararPoll();
+        overlay.hidden = true;
+      }
+    });
+
+    runBtn.addEventListener("click", async () => {
+      const tarefa = tarefaSelecionada();
+      if (!tarefa) return;
+      errorEl.hidden = true;
+
+      const parametros = {};
+      for (const input of camposEl.querySelectorAll("input[data-campo]")) {
+        parametros[input.dataset.campo] = input.value.trim();
+      }
+
+      const faltando = (tarefa.campos || []).filter(
+        (campo) => campo.obrigatorio && !parametros[campo.nome]
+      );
+      if (faltando.length) {
+        showError(`Preencha: ${faltando.map((c) => c.rotulo).join(", ")}`);
+        return;
+      }
+
+      runBtn.disabled = true;
+      runBtn.textContent = "Rodando...";
+      tarefaSelect.disabled = true;
+      logWrap.hidden = false;
+      logEl.textContent = "";
+      statusEl.textContent = "Rodando...";
+      statusEl.className = "hint";
+
+      let execucaoId;
+      try {
+        const resp = await fetch(API.manutencaoExecutar, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tarefa_id: tarefa.id, parametros }),
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(body.detail || `Erro ${resp.status}`);
+        execucaoId = body.execucao_id;
+      } catch (err) {
+        showError(err.message);
+        runBtn.disabled = false;
+        runBtn.textContent = "Rodar";
+        tarefaSelect.disabled = false;
+        return;
+      }
+
+      pollTimer = setInterval(async () => {
+        let status;
+        try {
+          status = await fetchJSON(API.manutencaoStatus(execucaoId));
+        } catch {
+          return; // tenta de novo no próximo tick — não desiste por uma falha isolada
+        }
+        logEl.textContent = status.log.join("\n");
+        logEl.scrollTop = logEl.scrollHeight;
+
+        if (status.status === "executando") return;
+
+        pararPoll();
+        runBtn.disabled = false;
+        runBtn.textContent = "Rodar";
+        tarefaSelect.disabled = false;
+
+        if (status.status === "concluido") {
+          statusEl.textContent = "✅ Concluído.";
+          statusEl.className = "hint concluido";
+        } else {
+          statusEl.textContent = `❌ Erro: ${status.erro || "desconhecido"}`;
+          statusEl.className = "hint erro";
+        }
+      }, 1000);
+    });
   }
 
   // Popup pequeno usado só pro marcador de um resultado de busca (não

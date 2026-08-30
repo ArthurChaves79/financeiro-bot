@@ -60,6 +60,19 @@ class JsApi:
     de navegador é inconsistente numa janela sem toda a interface de um
     navegador de verdade em volta)."""
 
+    def _abrir_dialogo_salvar(self, nome_sugerido: str, file_types: tuple[str, ...]) -> str | None:
+        import webview  # import local: só existe quando esta classe é usada (modo janela própria)
+
+        janela = webview.windows[0]
+        caminho_escolhido = janela.create_file_dialog(
+            webview.SAVE_DIALOG,
+            save_filename=nome_sugerido,
+            file_types=file_types,
+        )
+        if not caminho_escolhido:
+            return None
+        return caminho_escolhido if isinstance(caminho_escolhido, str) else caminho_escolhido[0]
+
     def salvar_imagem_png(self, data_url: str, nome_sugerido: str) -> dict:
         try:
             _cabecalho, base64_dados = data_url.split(",", 1)
@@ -67,20 +80,26 @@ class JsApi:
         except (ValueError, binascii.Error) as exc:
             return {"ok": False, "erro": f"Imagem inválida: {exc}"}
 
-        import webview  # import local: só existe quando esta classe é usada (modo janela própria)
-
-        janela = webview.windows[0]
-        caminho_escolhido = janela.create_file_dialog(
-            webview.SAVE_DIALOG,
-            save_filename=nome_sugerido,
-            file_types=("Imagem PNG (*.png)",),
-        )
-        if not caminho_escolhido:
+        destino = self._abrir_dialogo_salvar(nome_sugerido, ("Imagem PNG (*.png)",))
+        if destino is None:
             return {"ok": False, "cancelado": True}
 
-        destino = caminho_escolhido if isinstance(caminho_escolhido, str) else caminho_escolhido[0]
         try:
             Path(destino).write_bytes(dados)
+        except OSError as exc:
+            return {"ok": False, "erro": str(exc)}
+        return {"ok": True, "caminho": destino}
+
+    def salvar_texto(self, conteudo: str, nome_sugerido: str) -> dict:
+        """Salva texto puro (ex: CSV) num arquivo escolhido pelo usuário.
+        Grava com BOM UTF-8 (utf-8-sig) — sem isso, o Excel no Windows
+        interpreta acento errado ao abrir um CSV com "Ç"/"Á"/etc."""
+        destino = self._abrir_dialogo_salvar(nome_sugerido, ("Planilha CSV (*.csv)", "Texto (*.txt)"))
+        if destino is None:
+            return {"ok": False, "cancelado": True}
+
+        try:
+            Path(destino).write_text(conteudo, encoding="utf-8-sig", newline="")
         except OSError as exc:
             return {"ok": False, "erro": str(exc)}
         return {"ok": True, "caminho": destino}

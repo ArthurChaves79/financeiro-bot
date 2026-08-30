@@ -986,10 +986,15 @@
     const buscarBtn = document.getElementById("neighbors-buscar");
     const hintEl = document.getElementById("neighbors-hint");
     const listEl = document.getElementById("neighbors-list");
+    const exportarBtn = document.getElementById("neighbors-exportar");
 
     let poligonoSelecionado = null; // { feature, info } — o lote clicado, base da comparação
+    let ultimosEncontrados = []; // guardado pra "Exportar CSV" sem precisar buscar de novo
 
     function renderLista(encontrados) {
+      ultimosEncontrados = encontrados;
+      exportarBtn.disabled = encontrados.length === 0;
+
       listEl.innerHTML = "";
       if (!encontrados.length) {
         listEl.innerHTML = `<li class="neighbors-item" style="cursor:default">Nenhum confrontante encontrado com essa tolerância.</li>`;
@@ -1011,6 +1016,50 @@
         });
         listEl.appendChild(li);
       }
+    }
+
+    // CSV com ";" (não ",") — é o separador de lista que o Excel em
+    // português usa por padrão (já que "," é o separador decimal aqui).
+    function _campoCsv(valor) {
+      const texto = String(valor ?? "");
+      return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+    }
+
+    function exportarCsv() {
+      if (!ultimosEncontrados.length) return;
+      const linhas = [["Endereço", "Registro", "Distância (m)", "Camada", "Latitude", "Longitude"].map(_campoCsv).join(";")];
+      for (const { info, feature, distancia } of ultimosEncontrados) {
+        const props = feature.properties || {};
+        const endereco = _enderecoResumo(props) || props.nome || info.titulo;
+        const registro = _registroResumo(props) || "";
+        const centro = centroideAproximado(feature.geometry) || ["", ""];
+        linhas.push(
+          [endereco, registro, distancia.toFixed(1), info.titulo, centro[1], centro[0]].map(_campoCsv).join(";")
+        );
+      }
+      const csv = linhas.join("\r\n") + "\r\n";
+      const nomeArquivo = `confrontantes-${new Date().toISOString().slice(0, 10)}.csv`;
+
+      if (window.pywebview?.api?.salvar_texto) {
+        window.pywebview.api.salvar_texto(csv, nomeArquivo).then((resultado) => {
+          if (resultado.cancelado) return;
+          if (!resultado.ok) {
+            alert(`Não foi possível salvar o CSV: ${resultado.erro || "erro desconhecido"}`);
+            return;
+          }
+          alert(`CSV salvo em:\n${resultado.caminho}`);
+        });
+        return;
+      }
+
+      // Fallback pro modo navegador comum (sem pywebview) — precisa do
+      // BOM (﻿) na frente pro Excel também abrir os acentos certo.
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+      link.download = nomeArquivo;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     }
 
     function executarBusca() {
@@ -1063,6 +1112,8 @@
       state.map.getCanvas().style.cursor = "";
       state.map.getSource(CONFRONTANTES_DESTAQUE_SOURCE_ID)?.setData({ type: "FeatureCollection", features: [] });
       poligonoSelecionado = null;
+      ultimosEncontrados = [];
+      exportarBtn.disabled = true;
       hintEl.hidden = false;
       listEl.innerHTML = "";
     }
@@ -1077,6 +1128,7 @@
     });
     closeBtn.addEventListener("click", desativar);
     buscarBtn.addEventListener("click", executarBusca);
+    exportarBtn.addEventListener("click", exportarCsv);
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && state.buscandoVizinhos) desativar();

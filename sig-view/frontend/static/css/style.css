@@ -810,6 +810,8 @@ html, body {
   margin: 0;
   padding: 4px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .neighbors-item {
@@ -843,4 +845,30 @@ html, body {
   flex-shrink: 0;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+}
+
+#neighbors-panel-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+#neighbors-exportar {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+#neighbors-exportar:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+#neighbors-exportar:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

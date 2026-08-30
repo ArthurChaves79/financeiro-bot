@@ -98,6 +98,7 @@
     setupFeaturePanel();
     setupMeasure();
     setupExportarImagem();
+    setupImprimirLayout();
     setupVizinhos();
     setupManutencao();
     checarVersaoNova();
@@ -906,6 +907,251 @@
         link.remove();
       });
     });
+  }
+
+  // ---- Layout de impressão "oficial" (🖨) ----------------------------------
+  //
+  // Diferente de "📷 Salvar imagem" (que só baixa o canvas puro), monta
+  // uma segunda imagem — título, data, barra de escala, seta do norte e
+  // legenda das camadas visíveis — por cima de uma cópia do mapa, tudo
+  // desenhado num <canvas> à parte (offscreen), pronta pra anexar num
+  // relatório ou imprimir. Não depende de nenhuma biblioteca nova: tudo
+  // aqui é Canvas 2D (texto, linhas, triângulo) puro.
+
+  // Arredonda uma distância "crua" (metros por N pixels da barra) pro
+  // número mais próximo da série 1-2-5-10 (mesma lógica usada em régua
+  // de mapa/atlas) — assim a barra sempre mostra um valor redondo tipo
+  // "50 m" ou "2 km", nunca "37 m".
+  function _numeroBonitoDeEscala(metros) {
+    if (!Number.isFinite(metros) || metros <= 0) return 100;
+    const expoente = Math.floor(Math.log10(metros));
+    const base = 10 ** expoente;
+    const fracao = metros / base;
+    let escolhido;
+    if (fracao < 1.5) escolhido = 1;
+    else if (fracao < 3.5) escolhido = 2;
+    else if (fracao < 7.5) escolhido = 5;
+    else escolhido = 10;
+    return escolhido * base;
+  }
+
+  function _formatarEscalaLabel(metros) {
+    if (metros >= 1000) return `${(metros / 1000).toLocaleString("pt-BR")} km`;
+    return `${metros.toLocaleString("pt-BR")} m`;
+  }
+
+  // Metros por pixel "cru" (pixel de verdade do canvas, já multiplicado
+  // pelo devicePixelRatio) medindo 100px na horizontal a partir do
+  // centro do mapa — suficiente pra uma barra de escala aproximada
+  // (não precisa ser exata a ponto de considerar a curvatura dentro da
+  // própria tela).
+  function _metrosPorPixelCru() {
+    const dpr = window.devicePixelRatio || 1;
+    const centro = state.map.getCenter();
+    const pxCentro = state.map.project(centro);
+    const pxDeslocado = state.map.unproject({ x: pxCentro.x + 100, y: pxCentro.y });
+    const metros100px = _distanciaMetros([centro.lng, centro.lat], [pxDeslocado.lng, pxDeslocado.lat]);
+    return metros100px / 100 / dpr;
+  }
+
+  function setupImprimirLayout() {
+    const btn = document.getElementById("print-btn");
+
+    btn.addEventListener("click", () => {
+      requestAnimationFrame(async () => {
+        const dpr = window.devicePixelRatio || 1;
+        const mapaCanvas = state.map.getCanvas();
+
+        const margem = Math.round(20 * dpr);
+        const alturaCabecalho = Math.round(64 * dpr);
+        const itensLegenda = Array.from(state.geojsonPorCamada.values()).map((info) => ({
+          titulo: info.titulo,
+          cor: info.cor,
+        }));
+        const alturaLinhaLegenda = Math.round(22 * dpr);
+        const alturaLegenda = itensLegenda.length
+          ? Math.round(30 * dpr) + itensLegenda.length * alturaLinhaLegenda
+          : 0;
+
+        const largura = mapaCanvas.width;
+        const altura = alturaCabecalho + mapaCanvas.height + alturaLegenda;
+
+        const saida = document.createElement("canvas");
+        saida.width = largura;
+        saida.height = altura;
+        const ctx = saida.getContext("2d");
+
+        // Fundo branco (papel) — a área do mapa em si vem colada por
+        // cima logo abaixo, isso só cobre cabeçalho/legenda.
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, largura, altura);
+
+        // Cabeçalho: título + data/hora de geração.
+        ctx.fillStyle = "#1a1a1a";
+        ctx.font = `bold ${Math.round(22 * dpr)}px -apple-system, "Segoe UI", Arial, sans-serif`;
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText("SIG View", margem, Math.round(30 * dpr));
+
+        const agora = new Date();
+        ctx.fillStyle = "#555555";
+        ctx.font = `${Math.round(12 * dpr)}px -apple-system, "Segoe UI", Arial, sans-serif`;
+        ctx.fillText(`Gerado em ${agora.toLocaleString("pt-BR")}`, margem, Math.round(50 * dpr));
+
+        ctx.strokeStyle = "#cccccc";
+        ctx.lineWidth = Math.max(1, Math.round(1 * dpr));
+        ctx.beginPath();
+        ctx.moveTo(0, alturaCabecalho - 1);
+        ctx.lineTo(largura, alturaCabecalho - 1);
+        ctx.stroke();
+
+        // O mapa em si — cola direto do canvas do MapLibre, sem passar
+        // por toDataURL/Image (evita um round-trip assíncrono à toa).
+        ctx.drawImage(mapaCanvas, 0, alturaCabecalho);
+
+        // Seta do norte — ver a explicação do sinal de "-bearing" no
+        // comentário da função.
+        _desenharSetaNorte(ctx, largura - margem - Math.round(18 * dpr), alturaCabecalho + margem + Math.round(18 * dpr), dpr);
+
+        // Barra de escala.
+        const metrosPorPixel = _metrosPorPixelCru();
+        const metrosAlvo = _numeroBonitoDeEscala(metrosPorPixel * 120 * dpr);
+        const larguraBarra = metrosAlvo / metrosPorPixel;
+        _desenharBarraDeEscala(
+          ctx,
+          margem,
+          alturaCabecalho + mapaCanvas.height - margem,
+          larguraBarra,
+          _formatarEscalaLabel(metrosAlvo),
+          dpr
+        );
+
+        // Legenda das camadas visíveis (uma por linha, com uma
+        // quadradinho colorido igual ao usado no painel de Camadas).
+        if (itensLegenda.length) {
+          let y = alturaCabecalho + mapaCanvas.height + Math.round(24 * dpr);
+          ctx.font = `${Math.round(13 * dpr)}px -apple-system, "Segoe UI", Arial, sans-serif`;
+          for (const item of itensLegenda) {
+            const ladoQuadrado = Math.round(12 * dpr);
+            ctx.fillStyle = item.cor;
+            ctx.fillRect(margem, y - ladoQuadrado, ladoQuadrado, ladoQuadrado);
+            ctx.strokeStyle = "#999999";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(margem, y - ladoQuadrado, ladoQuadrado, ladoQuadrado);
+
+            ctx.fillStyle = "#1a1a1a";
+            ctx.fillText(item.titulo, margem + ladoQuadrado + Math.round(8 * dpr), y);
+            y += alturaLinhaLegenda;
+          }
+        }
+
+        let dataUrl;
+        try {
+          dataUrl = saida.toDataURL("image/png");
+        } catch (err) {
+          alert(`Não foi possível gerar o layout de impressão: ${err.message}`);
+          return;
+        }
+
+        const pad = (n) => String(n).padStart(2, "0");
+        const nomeArquivo =
+          `sigview-impressao-${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}` +
+          `-${pad(agora.getHours())}${pad(agora.getMinutes())}.png`;
+
+        if (window.pywebview?.api?.salvar_imagem_png) {
+          let resultado;
+          try {
+            resultado = await window.pywebview.api.salvar_imagem_png(dataUrl, nomeArquivo);
+          } catch (err) {
+            alert(`Não foi possível salvar a imagem: ${err.message}`);
+            return;
+          }
+          if (resultado.cancelado) return;
+          if (!resultado.ok) {
+            alert(`Não foi possível salvar a imagem: ${resultado.erro || "erro desconhecido"}`);
+            return;
+          }
+          alert(`Imagem salva em:\n${resultado.caminho}`);
+          return;
+        }
+
+        const link = document.createElement("a");
+        link.href = dataUrl;
+        link.download = nomeArquivo;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      });
+    });
+  }
+
+  // Seta apontando pro norte verdadeiro, considerando a rotação atual
+  // do mapa (bearing). bearing=0 -> mapa "sem rotação", norte é pra
+  // cima, seta não gira. Girar o mapa bearing° no sentido horário faz
+  // uma direção fixa (como o norte) girar bearing° no sentido
+  // ANTI-horário na tela — por isso o sinal trocado (-bearing).
+  function _desenharSetaNorte(ctx, cx, cy, dpr) {
+    const bearing = state.map.getBearing();
+    const raio = Math.round(14 * dpr);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((-bearing * Math.PI) / 180);
+
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.beginPath();
+    ctx.arc(0, 0, raio + Math.round(6 * dpr), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#999999";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = "#c0392b";
+    ctx.beginPath();
+    ctx.moveTo(0, -raio);
+    ctx.lineTo(raio * 0.55, raio * 0.6);
+    ctx.lineTo(0, raio * 0.25);
+    ctx.lineTo(-raio * 0.55, raio * 0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = `bold ${Math.round(11 * dpr)}px -apple-system, "Segoe UI", Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("N", 0, -raio - Math.round(4 * dpr));
+    ctx.textAlign = "start";
+
+    ctx.restore();
+  }
+
+  // Barra de escala com traços nas pontas e o rótulo (ex: "50 m") acima
+  // — desenhada com um fundo branco semi-transparente por baixo, pra
+  // ficar legível em cima de qualquer cor de mapa.
+  function _desenharBarraDeEscala(ctx, x, yBase, largura, rotulo, dpr) {
+    const alturaTraco = Math.round(6 * dpr);
+    const padding = Math.round(6 * dpr);
+
+    ctx.font = `${Math.round(11 * dpr)}px -apple-system, "Segoe UI", Arial, sans-serif`;
+    const larguraTexto = ctx.measureText(rotulo).width;
+    const larguraFundo = Math.max(largura, larguraTexto) + padding * 2;
+    const alturaFundo = Math.round(28 * dpr) + padding;
+
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillRect(x - padding, yBase - alturaFundo, larguraFundo, alturaFundo);
+    ctx.strokeStyle = "#999999";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - padding, yBase - alturaFundo, larguraFundo, alturaFundo);
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillText(rotulo, x, yBase - alturaTraco - Math.round(6 * dpr));
+
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = Math.max(1, Math.round(1.5 * dpr));
+    ctx.beginPath();
+    ctx.moveTo(x, yBase - alturaTraco);
+    ctx.lineTo(x, yBase);
+    ctx.lineTo(x + largura, yBase);
+    ctx.lineTo(x + largura, yBase - alturaTraco);
+    ctx.stroke();
   }
 
   // ---- Confrontantes (🧭) --------------------------------------------------

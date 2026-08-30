@@ -398,6 +398,8 @@ html, body {
 #measure-btn,
 #neighbors-btn,
 #export-btn,
+#print-btn,
+#maintenance-btn,
 #settings-btn {
   white-space: nowrap;
   padding: 8px 12px;
@@ -409,8 +411,9 @@ html, body {
   cursor: pointer;
 }
 
-/* Empurra os botões (Medir + Vizinhos + Salvar imagem + Configurações)
-   juntos pra direita — só o primeiro deles precisa do auto-margin. */
+/* Empurra os botões (Medir + Vizinhos + Salvar imagem + Imprimir +
+   Manutenção + Configurações) juntos pra direita — só o primeiro
+   deles precisa do auto-margin. */
 #measure-btn {
   margin-left: auto;
 }
@@ -418,6 +421,8 @@ html, body {
 #measure-btn:hover,
 #neighbors-btn:hover,
 #export-btn:hover,
+#print-btn:hover,
+#maintenance-btn:hover,
 #settings-btn:hover {
   border-color: var(--accent);
 }

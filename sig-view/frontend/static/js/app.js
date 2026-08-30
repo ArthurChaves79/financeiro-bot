@@ -19,6 +19,8 @@
     refreshTimers: new Map(), // layerId -> setInterval id (camadas com atualização periódica, ex: NetworkLink)
     medindo: false, // true enquanto a ferramenta "📏 Medir" está ativa
     pontosMedicao: [], // [[lon, lat], ...] marcados enquanto mede
+    buscandoVizinhos: false, // true enquanto a ferramenta "🎯 Vizinhos" está ativa
+    geojsonPorCamada: new Map(), // layerId -> {geojson, titulo, cor} das camadas ligadas — pra buscar vizinhos sem rebuscar no servidor
   };
 
   async function fetchJSON(url) {
@@ -82,6 +84,7 @@
         "fontes:", Object.keys(state.map.getStyle().sources)
       );
       criarCamadasDeMedicao();
+      criarCamadaDeRaioDeVizinhos();
       await loadLayersPanel();
     });
     setupSearch();
@@ -89,6 +92,7 @@
     setupFeaturePanel();
     setupMeasure();
     setupExportarImagem();
+    setupVizinhos();
   }
 
   function createMap(config) {
@@ -417,6 +421,7 @@
       }
       if (state.map.getSource(sourceId)) state.map.removeSource(sourceId);
       state.layerIds.delete(layerId);
+      state.geojsonPorCamada.delete(layerId);
       pararAtualizacaoPeriodica(layerId);
       return;
     }
@@ -432,6 +437,7 @@
     }
 
     state.map.addSource(sourceId, { type: "geojson", data: geojson });
+    state.geojsonPorCamada.set(layerId, { geojson, titulo: camada.nome || layerId, cor: corPadrao || "#3fa9f5" });
 
     const cor = corPadrao || "#3fa9f5";
     // Usa a cor definida no próprio polígono/feature, quando existir —
@@ -515,6 +521,8 @@
       try {
         const geojson = await comLimiteDeConcorrencia(() => fetchJSON(API.layer(layerId)));
         source.setData(geojson);
+        const info = state.geojsonPorCamada.get(layerId);
+        if (info) info.geojson = geojson; // mantém a busca por vizinhos com o dado mais recente
       } catch (err) {
         console.warn(`Falha ao atualizar a camada ${layerId}:`, err.message);
       }
@@ -757,7 +765,14 @@
       limpar();
     }
 
-    btn.addEventListener("click", () => (state.medindo ? desativar() : ativar()));
+    btn.addEventListener("click", () => {
+      if (state.medindo) {
+        desativar();
+      } else {
+        state.desativarVizinhos?.(); // só uma ferramenta de clique-no-mapa ativa por vez
+        ativar();
+      }
+    });
     clearBtn.addEventListener("click", limpar);
 
     document.addEventListener("keydown", (e) => {
@@ -769,6 +784,8 @@
       state.pontosMedicao.push([e.lngLat.lng, e.lngLat.lat]);
       atualizarDesenho();
     });
+
+    state.desativarMedicao = desativar;
   }
 
   // ---- Salvar mapa como imagem --------------------------------------------
@@ -831,6 +848,171 @@
         link.remove();
       });
     });
+  }
+
+  // ---- Busca por vizinhos (🎯) ---------------------------------------------
+  //
+  // Clica um ponto no mapa, lista tudo que estiver dentro de um raio
+  // (em qualquer camada ligada), ordenado por distância. Útil pra
+  // notificação de confrontantes/vizinhos num processo. A distância é
+  // até a BORDA de cada feature (0 se o ponto cair dentro do próprio
+  // polígono), não até o centro — mais correto pra lotes vizinhos.
+
+  const NEIGHBORS_CIRCLE_SOURCE_ID = "sigview-vizinhos-raio";
+  const NEIGHBORS_CIRCLE_LAYER_ID = "sigview-vizinhos-raio-linha";
+
+  function criarCamadaDeRaioDeVizinhos() {
+    state.map.addSource(NEIGHBORS_CIRCLE_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    state.map.addLayer({
+      id: NEIGHBORS_CIRCLE_LAYER_ID,
+      type: "line",
+      source: NEIGHBORS_CIRCLE_SOURCE_ID,
+      paint: { "line-color": "#3fa9f5", "line-width": 2, "line-dasharray": [3, 2] },
+    });
+  }
+
+  // Gera um polígono aproximando um círculo de `raioM` metros ao redor
+  // de `centro` — só pra referência visual de onde o raio pesquisado
+  // realmente cobre no mapa.
+  function _circuloGeoJSON(centro, raioM, pontos = 64) {
+    const mLat = (Math.PI / 180) * _RAIO_TERRA_M;
+    const mLon = mLat * Math.cos((centro[1] * Math.PI) / 180);
+    const anel = [];
+    for (let i = 0; i <= pontos; i++) {
+      const angulo = (i / pontos) * 2 * Math.PI;
+      const x = raioM * Math.cos(angulo);
+      const y = raioM * Math.sin(angulo);
+      anel.push([centro[0] + x / mLon, centro[1] + y / mLat]);
+    }
+    return { type: "Feature", geometry: { type: "Polygon", coordinates: [anel] }, properties: {} };
+  }
+
+  function _tituloDaFeature(feature, tituloCamada) {
+    const props = feature.properties || {};
+    return props.nome || props.Nome || tituloCamada;
+  }
+
+  function setupVizinhos() {
+    const btn = document.getElementById("neighbors-btn");
+    const panel = document.getElementById("neighbors-panel");
+    const closeBtn = document.getElementById("neighbors-panel-close");
+    const raioInput = document.getElementById("neighbors-raio");
+    const buscarBtn = document.getElementById("neighbors-buscar");
+    const hintEl = document.getElementById("neighbors-hint");
+    const listEl = document.getElementById("neighbors-list");
+
+    let pontoAtual = null; // [lon, lat] do último clique, pra "Atualizar" recalcular com raio novo
+
+    function limparCirculo() {
+      state.map.getSource(NEIGHBORS_CIRCLE_SOURCE_ID)?.setData({ type: "FeatureCollection", features: [] });
+    }
+
+    function executarBusca(centro) {
+      pontoAtual = centro;
+      const raioM = Math.max(1, Number(raioInput.value) || 100);
+
+      const encontrados = [];
+      for (const [layerId, info] of state.geojsonPorCamada) {
+        for (const feature of info.geojson.features || []) {
+          const distancia = distanciaMinimaAteGeometria(centro, feature.geometry);
+          if (distancia <= raioM) {
+            encontrados.push({ layerId, info, feature, distancia });
+          }
+        }
+      }
+      encontrados.sort((a, b) => a.distancia - b.distancia);
+
+      state.map.getSource(NEIGHBORS_CIRCLE_SOURCE_ID)?.setData(_circuloGeoJSON(centro, raioM));
+
+      hintEl.hidden = true;
+      listEl.innerHTML = "";
+      if (!encontrados.length) {
+        listEl.innerHTML = `<li class="neighbors-item" style="cursor:default">Nada num raio de ${raioM} m.</li>`;
+        return;
+      }
+      for (const { info, feature, distancia } of encontrados) {
+        const li = document.createElement("li");
+        li.className = "neighbors-item";
+        li.innerHTML = `
+          <span class="layer-swatch" style="background:${escapeHtml(info.cor)}"></span>
+          <span class="neighbors-item-label"></span>
+          <span class="neighbors-item-dist">${distancia < 1 ? "dentro" : `${Math.round(distancia)} m`}</span>
+        `;
+        li.querySelector(".neighbors-item-label").textContent = _tituloDaFeature(feature, info.titulo);
+        li.addEventListener("click", () => {
+          const centroFeature = centroideAproximado(feature.geometry);
+          if (centroFeature) state.map.flyTo({ center: centroFeature, zoom: 18 });
+          abrirPainelFeature(_tituloDaFeature(feature, info.titulo), info.cor, feature.properties || {}, feature.geometry);
+        });
+        listEl.appendChild(li);
+      }
+    }
+
+    function ativar() {
+      state.buscandoVizinhos = true;
+      btn.classList.add("active");
+      panel.classList.add("open");
+      state.map.getCanvas().style.cursor = "crosshair";
+    }
+
+    function desativar() {
+      state.buscandoVizinhos = false;
+      btn.classList.remove("active");
+      panel.classList.remove("open");
+      state.map.getCanvas().style.cursor = "";
+      limparCirculo();
+      pontoAtual = null;
+      hintEl.hidden = false;
+      listEl.innerHTML = "";
+    }
+
+    btn.addEventListener("click", () => {
+      if (state.buscandoVizinhos) {
+        desativar();
+      } else {
+        state.desativarMedicao?.();
+        ativar();
+      }
+    });
+    closeBtn.addEventListener("click", desativar);
+    buscarBtn.addEventListener("click", () => {
+      if (pontoAtual) executarBusca(pontoAtual);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && state.buscandoVizinhos) desativar();
+    });
+
+    state.map.on("click", (e) => {
+      if (!state.buscandoVizinhos) return;
+      executarBusca([e.lngLat.lng, e.lngLat.lat]);
+    });
+
+    state.desativarVizinhos = desativar;
+  }
+
+  // Centroide aproximado — mesma lógica usada no backend
+  // (app/geoutil.py), reimplementada aqui em JS pra "voar até" um
+  // resultado da busca por vizinhos sem precisar de outra chamada ao
+  // servidor.
+  function centroideAproximado(geometry) {
+    function* pontos(coords, tipo) {
+      if (tipo === "Point") yield coords;
+      else if (tipo === "LineString" || tipo === "MultiPoint") yield* coords;
+      else if (tipo === "Polygon" || tipo === "MultiLineString") for (const parte of coords) yield* parte;
+      else if (tipo === "MultiPolygon") for (const poligono of coords) for (const anel of poligono) yield* anel;
+    }
+    if (!geometry) return null;
+    let xs = 0, ys = 0, n = 0;
+    for (const p of pontos(geometry.coordinates, geometry.type)) {
+      xs += p[0];
+      ys += p[1];
+      n++;
+    }
+    return n ? [xs / n, ys / n] : null;
   }
 
   // ---- Configurações -----------------------------------------------------
@@ -1158,6 +1340,91 @@
     if (m2 >= 1_000_000) return `${(m2 / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km²`;
     if (m2 >= 10_000) return `${(m2 / 10_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha`;
     return `${m2.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} m²`;
+  }
+
+  // ---- Geometria pra busca por vizinhos ------------------------------------
+  //
+  // Distância mínima de um ponto até qualquer tipo de geometria (ponto,
+  // linha ou polígono — incluindo "dentro do polígono" = 0). Mesma
+  // técnica de projeção local usada em areaAproximadaM2: converte tudo
+  // pra metros num referencial centrado no próprio ponto de busca antes
+  // de medir, boa o bastante pra distâncias de bairro/quarteirão.
+
+  function _projetarLocal([lon, lat], origem) {
+    const mLat = (Math.PI / 180) * _RAIO_TERRA_M;
+    const mLon = mLat * Math.cos((origem[1] * Math.PI) / 180);
+    return [(lon - origem[0]) * mLon, (lat - origem[1]) * mLat];
+  }
+
+  function _distanciaPontoSegmento(p, a, b) {
+    const [px, py] = p, [ax, ay] = a, [bx, by] = b;
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  function _pontoDentroAnel([px, py], anel) {
+    let dentro = false;
+    for (let i = 0, j = anel.length - 1; i < anel.length; j = i++) {
+      const [xi, yi] = anel[i], [xj, yj] = anel[j];
+      const intersecta = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+      if (intersecta) dentro = !dentro;
+    }
+    return dentro;
+  }
+
+  function _pontoDentroDePoligono(ponto, aneis) {
+    const [externo, ...buracos] = aneis;
+    if (!_pontoDentroAnel(ponto, externo)) return false;
+    return !buracos.some((buraco) => _pontoDentroAnel(ponto, buraco));
+  }
+
+  function distanciaMinimaAteGeometria(pontoOrigem, geometry) {
+    if (!geometry) return Infinity;
+    const p = [0, 0]; // o próprio ponto de origem, já projetado em relação a si mesmo
+    const proj = (pt) => _projetarLocal(pt, pontoOrigem);
+
+    function distAneis(aneis) {
+      let min = Infinity;
+      for (const anel of aneis) {
+        for (let i = 0; i < anel.length; i++) {
+          min = Math.min(min, _distanciaPontoSegmento(p, proj(anel[i]), proj(anel[(i + 1) % anel.length])));
+        }
+      }
+      return min;
+    }
+
+    switch (geometry.type) {
+      case "Point":
+        return _distanciaMetros(pontoOrigem, geometry.coordinates);
+      case "MultiPoint":
+        return Math.min(...geometry.coordinates.map((c) => _distanciaMetros(pontoOrigem, c)));
+      case "LineString": {
+        let min = Infinity;
+        const coords = geometry.coordinates;
+        for (let i = 0; i < coords.length - 1; i++) {
+          min = Math.min(min, _distanciaPontoSegmento(p, proj(coords[i]), proj(coords[i + 1])));
+        }
+        return min;
+      }
+      case "MultiLineString":
+        return Math.min(...geometry.coordinates.map((linha) => distanciaMinimaAteGeometria(pontoOrigem, { type: "LineString", coordinates: linha })));
+      case "Polygon":
+        if (_pontoDentroDePoligono(pontoOrigem, geometry.coordinates)) return 0;
+        return distAneis(geometry.coordinates);
+      case "MultiPolygon": {
+        let min = Infinity;
+        for (const poligono of geometry.coordinates) {
+          if (_pontoDentroDePoligono(pontoOrigem, poligono)) return 0;
+          min = Math.min(min, distAneis(poligono));
+        }
+        return min;
+      }
+      default:
+        return Infinity;
+    }
   }
 
   function montarLinhasPainel(props, geometry) {

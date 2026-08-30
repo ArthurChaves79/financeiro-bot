@@ -8,6 +8,13 @@ menos) estas colunas — os nomes podem ser remapeados com --map:
 
   tipo: "endereco", "bairro" ou "cep"
 
+Colunas opcionais (deixe de fora se não tiver): numero_par_ini,
+numero_par_fim, numero_impar_ini, numero_impar_fim — faixa de
+numeração (par/ímpar) do trecho de rua, usada pra achar o trecho certo
+quando a busca inclui um número de porta (ex: "Rua Natal 974"). É o
+que `scripts/converter_geopackage_geosampa.py` já preenche sozinho, a
+partir do "Eixo de Logradouro" do GeoSampa.
+
 Fontes sugeridas para popular o CSV de São Paulo:
   - GeoSampa (geosampa.prefeitura.sp.gov.br) — logradouros e bairros da
     capital, dados abertos, atualizados periodicamente.
@@ -65,6 +72,26 @@ CREATE TRIGGER IF NOT EXISTS enderecos_ai AFTER INSERT ON enderecos BEGIN
 END;
 """
 
+# Faixa de numeração (par/ímpar) do trecho de rua — vem do "Eixo de
+# Logradouro" do GeoSampa (lg_ini_par/lg_fim_par/lg_ini_imp/lg_fim_imp),
+# usada pra achar o trecho certo quando a busca inclui um número (ex:
+# "Rua Natal 974"). Colunas novas, adicionadas numa tabela que já
+# existia antes delas — por isso são ALTER TABLE, não fazem parte do
+# CREATE TABLE acima (que só roda se a tabela ainda não existe).
+_COLUNAS_FAIXA_NUMERACAO = [
+    "numero_par_ini",
+    "numero_par_fim",
+    "numero_impar_ini",
+    "numero_impar_fim",
+]
+
+
+def _migrar_colunas_faixa_numeracao(conn: sqlite3.Connection) -> None:
+    colunas_existentes = {row[1] for row in conn.execute("PRAGMA table_info(enderecos)")}
+    for coluna in _COLUNAS_FAIXA_NUMERACAO:
+        if coluna not in colunas_existentes:
+            conn.execute(f"ALTER TABLE enderecos ADD COLUMN {coluna} INTEGER")
+
 
 def ensure_schema(db_path: Path) -> sqlite3.Connection:
     """Abre (criando se preciso) o banco com o schema compartilhado, sem
@@ -73,6 +100,7 @@ def ensure_schema(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
+    _migrar_colunas_faixa_numeracao(conn)
     return conn
 
 
@@ -96,6 +124,18 @@ def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> tuple[list[tuple]
         for row in reader:
             def col(name: str) -> str:
                 return (row.get(column_map.get(name, name)) or "").strip()
+
+            def col_int(name: str) -> int | None:
+                # Colunas de faixa de numeração são opcionais — CSVs sem
+                # elas (ex: um de bairros) simplesmente não têm a coluna,
+                # e um valor que não seja um número inteiro válido vira
+                # NULL em vez de dar erro (não são essenciais pra achar
+                # o registro, só pra refinar a busca por número).
+                bruto = col(name)
+                try:
+                    return int(float(bruto)) if bruto else None
+                except ValueError:
+                    return None
 
             try:
                 lat = float(col("lat"))
@@ -122,6 +162,10 @@ def _ler_linhas(csv_path: Path, column_map: dict[str, str]) -> tuple[list[tuple]
                     _format_cep(col("cep")),
                     lat,
                     lon,
+                    col_int("numero_par_ini"),
+                    col_int("numero_par_fim"),
+                    col_int("numero_impar_ini"),
+                    col_int("numero_impar_fim"),
                 )
             )
         return rows, ignoradas
@@ -165,8 +209,11 @@ def build(csv_paths: Path | list[Path], db_path: Path, column_map: dict[str, str
     count = 0
     for csv_path, rows in lidos:
         conn.executemany(
-            """INSERT INTO enderecos (tipo, logradouro, bairro, cidade, cep, lat, lon)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO enderecos (
+                   tipo, logradouro, bairro, cidade, cep, lat, lon,
+                   numero_par_ini, numero_par_fim, numero_impar_ini, numero_impar_fim
+               )
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             rows,
         )
         count += len(rows)

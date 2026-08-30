@@ -67,6 +67,13 @@ CAMPOS_CONHECIDOS = {
     "bairro": ["bairro", "nomebairro", "nmbairro", "dsbairro"],
     "distrito": ["distrito", "nomedistrito", "nmdistrito", "dsdistrito"],
     "cep": ["cep", "ceplogr", "codcep", "nucep"],
+    # Faixa de numeração (par/ímpar) do trecho — lg_ini_par/lg_fim_par/
+    # lg_ini_imp/lg_fim_imp na camada oficial. Usada pra achar o trecho
+    # certo quando a busca inclui um número de porta (ex: "Rua Natal 974").
+    "numero_par_ini": ["lginipar", "iniciopar", "numiniciopar"],
+    "numero_par_fim": ["lgfimpar", "fimpar", "numfimpar"],
+    "numero_impar_ini": ["lginiimp", "lginiimpar", "inicioimpar", "numinicioimpar"],
+    "numero_impar_fim": ["lgfimimp", "lgfimimpar", "fimimpar", "numfimimpar"],
 }
 
 # lg_tipo do GeoSampa vem abreviado (ex: "AV", "R") — expande pros nomes
@@ -177,6 +184,10 @@ def linhas_de_features(
                 "cep": cep or "",
                 "lat": lat,
                 "lon": lon,
+                "numero_par_ini": _campo(props, indice, CAMPOS_CONHECIDOS["numero_par_ini"], mapeamento, "numero_par_ini"),
+                "numero_par_fim": _campo(props, indice, CAMPOS_CONHECIDOS["numero_par_fim"], mapeamento, "numero_par_fim"),
+                "numero_impar_ini": _campo(props, indice, CAMPOS_CONHECIDOS["numero_impar_ini"], mapeamento, "numero_impar_ini"),
+                "numero_impar_fim": _campo(props, indice, CAMPOS_CONHECIDOS["numero_impar_fim"], mapeamento, "numero_impar_fim"),
             }
         )
 
@@ -207,9 +218,15 @@ def converter(
     return linhas_de_features(features, tipo, cidade, mapeamento)
 
 
+_CAMPOS_CSV = [
+    "tipo", "logradouro", "bairro", "cidade", "cep", "lat", "lon",
+    "numero_par_ini", "numero_par_fim", "numero_impar_ini", "numero_impar_fim",
+]
+
+
 def escrever_csv(linhas: list[dict[str, str]], saida: Path) -> None:
     with saida.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["tipo", "logradouro", "bairro", "cidade", "cep", "lat", "lon"])
+        writer = csv.DictWriter(fh, fieldnames=_CAMPOS_CSV)
         writer.writeheader()
         writer.writerows(linhas)
 

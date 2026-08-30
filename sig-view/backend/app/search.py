@@ -21,6 +21,13 @@ from .config import settings
 
 _CEP_RE = re.compile(r"^\d{5}-?\d{3}$")
 
+# "Rua Natal 974" -> ("Rua Natal", "974"). Exige espaço antes do número
+# (não só "não-dígito") pra não confundir com um código tipo
+# "045.123.0045-6" (que termina em dígito colado num "-", sem espaço) —
+# esse continua indo pra busca normal por texto, sem tentar separar
+# número nenhum.
+_ENDERECO_COM_NUMERO_RE = re.compile(r"^(.+?)\s+(\d{1,6})$")
+
 
 @dataclass
 class SearchResult:
@@ -34,6 +41,7 @@ class SearchResult:
     layer_id: str | None  # id da camada de origem, se veio de uma camada vinculada
     lat: float
     lon: float
+    numero_buscado: int | None = None  # nº de porta digitado na busca, quando achou o trecho certo
 
     def to_dict(self) -> dict:
         return {
@@ -52,7 +60,13 @@ class SearchResult:
 
     @property
     def label(self) -> str:
-        partes = [p for p in (self.logradouro, self.bairro, self.cidade) if p]
+        logradouro = self.logradouro
+        if logradouro and self.numero_buscado is not None:
+            # É o centro aproximado do TRECHO da rua onde esse número
+            # cai (achado pela faixa de numeração do GeoSampa), não a
+            # porta exata — "aprox." deixa isso claro pro usuário.
+            logradouro = f"{logradouro}, nº {self.numero_buscado} (aprox.)"
+        partes = [p for p in (logradouro, self.bairro, self.cidade) if p]
         texto = ", ".join(partes)
         if self.rotulo:
             texto = f"{texto} — {self.rotulo}" if texto else self.rotulo
@@ -111,18 +125,35 @@ def _search_by_cep(conn: sqlite3.Connection, cep_digits: str, limit: int) -> lis
     return [_row_to_result(r) for r in rows]
 
 
-def _search_fts(conn: sqlite3.Connection, query: str, limit: int) -> list[SearchResult]:
-    normalized = _normalize(query)
-    # Cada termo vira um prefixo FTS5 (ex: "av paulista" -> "av* paulista*").
-    # Separa por QUALQUER pontuação, não só espaço — o FTS5 (tokenizer
-    # unicode61) já quebra o texto indexado assim (ex: "045.123.0045"
-    # vira os tokens "045", "123", "0045" separados); se a busca não
-    # separar do mesmo jeito, digitar um código com pontos/traços (SQL de
-    # imóvel, matrícula etc.) não encontra nada mesmo estando indexado.
-    terms = [t for t in re.split(r"[^a-z0-9]+", normalized) if t]
+def _match_expr(texto: str) -> str | None:
+    """Cada termo vira um prefixo FTS5 (ex: "av paulista" -> "av* paulista*").
+    Separa por QUALQUER pontuação, não só espaço — o FTS5 (tokenizer
+    unicode61) já quebra o texto indexado assim (ex: "045.123.0045"
+    vira os tokens "045", "123", "0045" separados); se a busca não
+    separar do mesmo jeito, digitar um código com pontos/traços (SQL de
+    imóvel, matrícula etc.) não encontra nada mesmo estando indexado."""
+    terms = [t for t in re.split(r"[^a-z0-9]+", _normalize(texto)) if t]
     if not terms:
+        return None
+    return " ".join(f"{_escape_fts(t)}*" for t in terms)
+
+
+def _search_fts(conn: sqlite3.Connection, query: str, limit: int) -> list[SearchResult]:
+    m = _ENDERECO_COM_NUMERO_RE.match(query.strip())
+    if m:
+        nome_rua, numero = m.group(1), int(m.group(2))
+        resultados = _search_por_numero(conn, nome_rua, numero, limit)
+        if resultados:
+            return resultados
+        # Não achou nenhum trecho com esse número na faixa (rua sem
+        # numeração cadastrada, número fora do que existe, etc.) — cai
+        # pra busca normal só pelo nome da rua, sem o número, em vez de
+        # devolver "nada encontrado" pro usuário.
+        query = nome_rua
+
+    match_expr = _match_expr(query)
+    if match_expr is None:
         return []
-    match_expr = " ".join(f"{_escape_fts(t)}*" for t in terms)
 
     rows = conn.execute(
         """
@@ -138,12 +169,41 @@ def _search_fts(conn: sqlite3.Connection, query: str, limit: int) -> list[Search
     return [_row_to_result(r) for r in rows]
 
 
+def _search_por_numero(conn: sqlite3.Connection, nome_rua: str, numero: int, limit: int) -> list[SearchResult]:
+    """Acha o(s) trecho(s) da rua cuja faixa de numeração (par/ímpar,
+    vinda do Eixo de Logradouro do GeoSampa) contém o número buscado —
+    o resultado é o centro aproximado daquele TRECHO, não a porta
+    exata (a camada não tem a posição de cada número, só a faixa de
+    cada pedaço de rua)."""
+    match_expr = _match_expr(nome_rua)
+    if match_expr is None:
+        return []
+
+    par = numero % 2 == 0
+    coluna_ini, coluna_fim = ("numero_par_ini", "numero_par_fim") if par else ("numero_impar_ini", "numero_impar_fim")
+
+    rows = conn.execute(
+        f"""
+        SELECT enderecos.*
+        FROM enderecos_fts
+        JOIN enderecos ON enderecos.id = enderecos_fts.rowid
+        WHERE enderecos_fts MATCH ?
+          AND {coluna_ini} IS NOT NULL AND {coluna_fim} IS NOT NULL
+          AND ? BETWEEN min({coluna_ini}, {coluna_fim}) AND max({coluna_ini}, {coluna_fim})
+        ORDER BY rank
+        LIMIT ?
+        """,
+        (match_expr, numero, limit),
+    ).fetchall()
+    return [_row_to_result(r, numero_buscado=numero) for r in rows]
+
+
 def _escape_fts(term: str) -> str:
     # remove caracteres que quebram a sintaxe de MATCH do FTS5
     return re.sub(r"[^a-z0-9]", "", term)
 
 
-def _row_to_result(row: sqlite3.Row) -> SearchResult:
+def _row_to_result(row: sqlite3.Row, numero_buscado: int | None = None) -> SearchResult:
     colunas = row.keys()
     return SearchResult(
         id=row["id"],
@@ -156,4 +216,5 @@ def _row_to_result(row: sqlite3.Row) -> SearchResult:
         layer_id=row["layer_id"] if "layer_id" in colunas else None,
         lat=row["lat"],
         lon=row["lon"],
+        numero_buscado=numero_buscado,
     )

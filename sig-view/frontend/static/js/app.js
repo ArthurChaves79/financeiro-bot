@@ -17,6 +17,8 @@
     marker: null,
     layerIds: new Set(), // camadas já adicionadas ao mapa
     refreshTimers: new Map(), // layerId -> setInterval id (camadas com atualização periódica, ex: NetworkLink)
+    medindo: false, // true enquanto a ferramenta "📏 Medir" está ativa
+    pontosMedicao: [], // [[lon, lat], ...] marcados enquanto mede
   };
 
   async function fetchJSON(url) {
@@ -79,11 +81,13 @@
         "centro:", state.map.getCenter(),
         "fontes:", Object.keys(state.map.getStyle().sources)
       );
+      criarCamadasDeMedicao();
       await loadLayersPanel();
     });
     setupSearch();
     setupSettings();
     setupFeaturePanel();
+    setupMeasure();
   }
 
   function createMap(config) {
@@ -466,10 +470,11 @@
     // abre a barra lateral de detalhes com todos os atributos da feature.
     for (const id of [fillId, lineId, pointId]) {
       state.map.on("click", id, (e) => {
+        if (state.medindo) return; // com a régua ativa, o clique é pra marcar ponto, não abrir a feature
         const feature = e.features[0];
         const props = feature.properties || {};
         const titulo = props.nome || camada.nome || layerId;
-        abrirPainelFeature(titulo, cor, props);
+        abrirPainelFeature(titulo, cor, props, feature.geometry);
       });
       state.map.on("mouseenter", id, () => { state.map.getCanvas().style.cursor = "pointer"; });
       state.map.on("mouseleave", id, () => { state.map.getCanvas().style.cursor = ""; });
@@ -658,6 +663,109 @@
     }
   }
 
+  // ---- Medir distância -----------------------------------------------------
+  //
+  // Ferramenta simples: ativa, clica pontos no mapa, mostra a distância
+  // total acumulada (linha reta entre os pontos, ponto a ponto — não
+  // segue rua). "Limpar" reseta; desativar o botão também limpa.
+
+  const MEASURE_SOURCE_ID = "sigview-medicao";
+  const MEASURE_LINE_ID = "sigview-medicao-linha";
+  const MEASURE_PONTOS_ID = "sigview-medicao-pontos";
+
+  function criarCamadasDeMedicao() {
+    state.map.addSource(MEASURE_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    state.map.addLayer({
+      id: MEASURE_LINE_ID,
+      type: "line",
+      source: MEASURE_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "LineString"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#e0605f", "line-width": 2, "line-dasharray": [2, 1] },
+    });
+    state.map.addLayer({
+      id: MEASURE_PONTOS_ID,
+      type: "circle",
+      source: MEASURE_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: { "circle-radius": 4, "circle-color": "#e0605f", "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 },
+    });
+  }
+
+  // Haversine — distância em metros entre dois pontos [lon, lat].
+  function _distanciaMetros([lon1, lat1], [lon2, lat2]) {
+    const R = 6371000;
+    const rad = Math.PI / 180;
+    const dLat = (lat2 - lat1) * rad;
+    const dLon = (lon2 - lon1) * rad;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  function formatarDistancia(m) {
+    if (m >= 1000) return `${(m / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km`;
+    return `${m.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} m`;
+  }
+
+  function setupMeasure() {
+    const btn = document.getElementById("measure-btn");
+    const box = document.getElementById("measure-box");
+    const totalEl = document.getElementById("measure-total");
+    const clearBtn = document.getElementById("measure-clear");
+
+    function atualizarDesenho() {
+      const pontos = state.pontosMedicao;
+      const features = pontos.map((p) => ({ type: "Feature", geometry: { type: "Point", coordinates: p }, properties: {} }));
+      if (pontos.length >= 2) {
+        features.push({ type: "Feature", geometry: { type: "LineString", coordinates: pontos }, properties: {} });
+      }
+      state.map.getSource(MEASURE_SOURCE_ID)?.setData({ type: "FeatureCollection", features });
+
+      let total = 0;
+      for (let i = 1; i < pontos.length; i++) total += _distanciaMetros(pontos[i - 1], pontos[i]);
+      totalEl.textContent = formatarDistancia(total);
+    }
+
+    function limpar() {
+      state.pontosMedicao = [];
+      atualizarDesenho();
+    }
+
+    function ativar() {
+      state.medindo = true;
+      btn.classList.add("active");
+      box.hidden = false;
+      state.map.getCanvas().style.cursor = "crosshair";
+      limpar();
+    }
+
+    function desativar() {
+      state.medindo = false;
+      btn.classList.remove("active");
+      box.hidden = true;
+      state.map.getCanvas().style.cursor = "";
+      limpar();
+    }
+
+    btn.addEventListener("click", () => (state.medindo ? desativar() : ativar()));
+    clearBtn.addEventListener("click", limpar);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && state.medindo) desativar();
+    });
+
+    state.map.on("click", (e) => {
+      if (!state.medindo) return;
+      state.pontosMedicao.push([e.lngLat.lng, e.lngLat.lat]);
+      atualizarDesenho();
+    });
+  }
+
   // ---- Configurações -----------------------------------------------------
 
   function setupSettings() {
@@ -832,13 +940,13 @@
     document.getElementById("feature-panel").classList.remove("open");
   }
 
-  function abrirPainelFeature(titulo, cor, props) {
+  function abrirPainelFeature(titulo, cor, props, geometry) {
     const painel = document.getElementById("feature-panel");
     document.getElementById("feature-panel-title").textContent = titulo;
     document.getElementById("feature-panel-title").title = titulo;
     document.getElementById("feature-panel-swatch").style.background = cor || "#3fa9f5";
 
-    const linhas = montarLinhasPainel(props || {});
+    const linhas = montarLinhasPainel(props || {}, geometry);
     document.getElementById("feature-panel-body").innerHTML = linhas.length
       ? linhas.map(renderLinhaPainel).join("")
       : `<div class="feature-panel-empty">Sem atributos</div>`;
@@ -940,7 +1048,52 @@
     return espacado.charAt(0).toUpperCase() + espacado.slice(1);
   }
 
-  function montarLinhasPainel(props) {
+  // Área aproximada de um Polygon/MultiPolygon, em m² — projeta cada
+  // anel localmente (achatando a longitude pelo cosseno da latitude
+  // média, aproximação boa o bastante pra um lote/terreno, que é
+  // pequeno perto do raio da Terra) e aplica a fórmula do shoelace.
+  // Buracos (anéis internos) são subtraídos, como o GeoJSON já prevê
+  // (primeiro anel = contorno externo, os demais = buracos).
+  const _RAIO_TERRA_M = 6371000;
+
+  function _areaDoAnel(anel) {
+    if (anel.length < 3) return 0;
+    const latMedia = anel.reduce((soma, p) => soma + p[1], 0) / anel.length;
+    const metrosPorGrauLat = (Math.PI / 180) * _RAIO_TERRA_M;
+    const metrosPorGrauLon = metrosPorGrauLat * Math.cos((latMedia * Math.PI) / 180);
+    let soma = 0;
+    for (let i = 0; i < anel.length; i++) {
+      const [lon1, lat1] = anel[i];
+      const [lon2, lat2] = anel[(i + 1) % anel.length];
+      const x1 = lon1 * metrosPorGrauLon, y1 = lat1 * metrosPorGrauLat;
+      const x2 = lon2 * metrosPorGrauLon, y2 = lat2 * metrosPorGrauLat;
+      soma += x1 * y2 - x2 * y1;
+    }
+    return Math.abs(soma) / 2;
+  }
+
+  function areaAproximadaM2(geometry) {
+    if (!geometry) return null;
+    if (geometry.type === "Polygon") {
+      const [externo, ...buracos] = geometry.coordinates;
+      return _areaDoAnel(externo) - buracos.reduce((soma, b) => soma + _areaDoAnel(b), 0);
+    }
+    if (geometry.type === "MultiPolygon") {
+      return geometry.coordinates.reduce((soma, poligono) => {
+        const [externo, ...buracos] = poligono;
+        return soma + _areaDoAnel(externo) - buracos.reduce((s, b) => s + _areaDoAnel(b), 0);
+      }, 0);
+    }
+    return null;
+  }
+
+  function formatarArea(m2) {
+    if (m2 >= 1_000_000) return `${(m2 / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} km²`;
+    if (m2 >= 10_000) return `${(m2 / 10_000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ha`;
+    return `${m2.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} m²`;
+  }
+
+  function montarLinhasPainel(props, geometry) {
     const indice = indexarPropriedades(props);
     const consumidas = new Set();
     const linhas = [];
@@ -953,6 +1106,14 @@
     const contribuinteDireto = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.contribuinte);
     const contribuinte = contribuinteDireto || [setor, quadra, lote].filter(Boolean).join(".");
     if (contribuinte) linhas.push({ label: "Contribuinte", valor: contribuinte });
+
+    // Área calculada na hora, a partir da própria geometria — não
+    // depende de nenhum campo/atributo do banco (só entra pra
+    // Polygon/MultiPolygon; ponto e linha não têm área).
+    const areaM2 = areaAproximadaM2(geometry);
+    if (areaM2 !== null && areaM2 > 0) {
+      linhas.push({ label: "Área (aprox.)", valor: formatarArea(areaM2) });
+    }
 
     // Número do Registro: Matrícula (prioridade) ou Transcrição.
     const matricula = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.matricula);

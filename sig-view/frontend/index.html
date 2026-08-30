@@ -16,6 +16,7 @@
         <input id="search-input" type="text" placeholder="Buscar endereço, CEP ou bairro..." autocomplete="off" />
         <ul id="search-results" hidden></ul>
       </div>
+      <button id="measure-btn" type="button" title="Medir distância no mapa">📏 Medir</button>
       <button id="settings-btn" type="button" title="Configurações">⚙ Configurações</button>
     </header>
 
@@ -68,6 +69,11 @@
     </aside>
 
     <div id="map">
+      <div id="measure-box" hidden>
+        <span id="measure-total">0 m</span>
+        <span id="measure-hint">clique no mapa pra marcar pontos</span>
+        <button id="measure-clear" type="button" title="Limpar medição">Limpar</button>
+      </div>
       <aside id="feature-panel">
         <div id="feature-panel-header">
           <span id="feature-panel-swatch" class="layer-swatch"></span>

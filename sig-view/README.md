@@ -285,6 +285,27 @@ converter nada.
 > nome de rua e bairro funciona plenamente de qualquer forma; CEP é só
 > mais um campo pesquisável quando disponível.
 
+### Buscar por rua + número (ex: "Rua Natal 974")
+
+A camada "Eixo de Logradouro" do GeoSampa também traz, pra cada trecho
+de rua, a faixa de numeração par e ímpar daquele pedaço
+(`lg_ini_par`/`lg_fim_par`/`lg_ini_imp`/`lg_fim_imp`) — os dois
+conversores acima (GeoJSON e GeoPackage) já extraem isso sozinhos,
+sem precisar de nada extra. Ao buscar "Rua Natal 974", o programa acha
+o trecho da rua cuja faixa contém esse número e leva até o centro
+aproximado daquele trecho (não é a porta exata — a camada não tem a
+posição de cada número, só a faixa de cada pedaço de rua — por isso o
+resultado aparece marcado como "nº 974 (aprox.)"). Se o número não
+cair em nenhuma faixa conhecida, a busca cai pra mostrar a rua inteira,
+em vez de não achar nada.
+
+Isso já vem pronto ao importar pelo `converter_geosampa_logradouros.py`
+ou `converter_geopackage_geosampa.py` — só rode `build_geocoder_index.py`
+de novo em cima do CSV gerado. Se você já tinha um índice antigo (de
+antes dessa funcionalidade existir), rodar `build_geocoder_index.py`
+de novo com um CSV que tenha essas colunas atualiza tudo — não precisa
+apagar nada na mão.
+
 ### Buscar imóveis pelos dados vinculados aos polígonos
 
 Depois de rodar `vincular_poligonos.py` (veja mais abaixo), a camada

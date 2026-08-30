@@ -27,6 +27,8 @@ if sys.stdout is None or sys.stderr is None:
     sys.stdout = sys.stdout or _log_file
     sys.stderr = sys.stderr or _log_file
 
+import base64
+import binascii
 import os
 import threading
 import time
@@ -50,6 +52,40 @@ def _run_server() -> None:
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
 
 
+class JsApi:
+    """Ponte JS -> Python usada pelo pywebview (`window.pywebview.api.*`
+    do lado do navegador). Só tem o que precisa de um recurso nativo do
+    Windows que o navegador embutido sozinho não dá pra fazer direito
+    — aqui, abrir a janela "Salvar como" de verdade (o download comum
+    de navegador é inconsistente numa janela sem toda a interface de um
+    navegador de verdade em volta)."""
+
+    def salvar_imagem_png(self, data_url: str, nome_sugerido: str) -> dict:
+        try:
+            _cabecalho, base64_dados = data_url.split(",", 1)
+            dados = base64.b64decode(base64_dados)
+        except (ValueError, binascii.Error) as exc:
+            return {"ok": False, "erro": f"Imagem inválida: {exc}"}
+
+        import webview  # import local: só existe quando esta classe é usada (modo janela própria)
+
+        janela = webview.windows[0]
+        caminho_escolhido = janela.create_file_dialog(
+            webview.SAVE_DIALOG,
+            save_filename=nome_sugerido,
+            file_types=("Imagem PNG (*.png)",),
+        )
+        if not caminho_escolhido:
+            return {"ok": False, "cancelado": True}
+
+        destino = caminho_escolhido if isinstance(caminho_escolhido, str) else caminho_escolhido[0]
+        try:
+            Path(destino).write_bytes(dados)
+        except OSError as exc:
+            return {"ok": False, "erro": str(exc)}
+        return {"ok": True, "caminho": destino}
+
+
 def main() -> None:
     server_thread = threading.Thread(target=_run_server, daemon=True)
     server_thread.start()
@@ -64,7 +100,7 @@ def main() -> None:
         webview = None
 
     if webview is not None:
-        webview.create_window("SIG View", url, width=1366, height=850, min_size=(900, 600))
+        webview.create_window("SIG View", url, width=1366, height=850, min_size=(900, 600), js_api=JsApi())
         # debug=True (só com SIGVIEW_DEBUG=1) habilita clicar com o botao
         # direito -> "Inspecionar" dentro da propria janela do programa
         # (equivalente ao F12 do navegador) - util pra diagnosticar

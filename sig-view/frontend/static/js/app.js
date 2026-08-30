@@ -784,7 +784,7 @@
     btn.addEventListener("click", () => {
       // Espera o navegador terminar de pintar o quadro atual antes de
       // capturar — evita pegar um instante intermediário do desenho.
-      requestAnimationFrame(() => {
+      requestAnimationFrame(async () => {
         let dataUrl;
         try {
           dataUrl = state.map.getCanvas().toDataURL("image/png");
@@ -799,6 +799,30 @@
           `sigview-mapa-${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}` +
           `-${pad(agora.getHours())}${pad(agora.getMinutes())}.png`;
 
+        // Na janela própria (pywebview), o download comum de navegador
+        // é inconsistente — às vezes cai direto na pasta Downloads sem
+        // avisar nada, sem dar pra escolher onde. Quando dá pra usar a
+        // ponte pro Python (window.pywebview.api), abre a janela
+        // "Salvar como" de verdade do Windows em vez disso.
+        if (window.pywebview?.api?.salvar_imagem_png) {
+          let resultado;
+          try {
+            resultado = await window.pywebview.api.salvar_imagem_png(dataUrl, nomeArquivo);
+          } catch (err) {
+            alert(`Não foi possível salvar a imagem: ${err.message}`);
+            return;
+          }
+          if (resultado.cancelado) return; // usuário fechou a janela "Salvar como" — nada a avisar
+          if (!resultado.ok) {
+            alert(`Não foi possível salvar a imagem: ${resultado.erro || "erro desconhecido"}`);
+            return;
+          }
+          alert(`Imagem salva em:\n${resultado.caminho}`);
+          return;
+        }
+
+        // Fallback pra quando o programa abre no navegador comum (sem
+        // pywebview) — aí o download padrão do navegador funciona bem.
         const link = document.createElement("a");
         link.href = dataUrl;
         link.download = nomeArquivo;

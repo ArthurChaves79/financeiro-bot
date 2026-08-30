@@ -424,6 +424,10 @@ html, body {
   color: #fff;
 }
 
+#measure-box[hidden] {
+  display: none;
+}
+
 #measure-box {
   position: absolute;
   top: 12px;
@@ -506,6 +510,10 @@ html, body {
   font-size: 12px;
   color: var(--text-dim);
   margin: 14px 0 4px;
+}
+
+#settings-panel label[hidden] {
+  display: none;
 }
 
 #settings-panel input,

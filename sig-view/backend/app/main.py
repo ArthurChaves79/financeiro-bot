@@ -135,8 +135,14 @@ def font_range(fontstack: str, intervalo: str) -> Response:
     tiles_module.FONTS_DIR e o README ("Nomes de rua no mapa")."""
     try:
         data = tiles_module.get_font_range(fontstack, intervalo)
-    except tiles_module.FontNotFound as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except tiles_module.FontNotFound:
+        # Igual à rota de tiles: devolve vazio (sem corpo) em vez de um
+        # erro 404 com corpo JSON — o MapLibre espera receber protobuf
+        # binário aqui (ou nada), e um corpo JSON no lugar pode travar o
+        # processamento do estilo inteiro (foi o que aconteceu: o mapa
+        # inteiro ficava em branco assim que qualquer rótulo era ligado,
+        # exatamente porque a fonte ainda não tinha sido baixada).
+        return Response(status_code=204)
     return Response(content=data, media_type="application/x-protobuf")
 
 

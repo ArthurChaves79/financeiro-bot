@@ -88,6 +88,7 @@
     setupSettings();
     setupFeaturePanel();
     setupMeasure();
+    setupExportarImagem();
   }
 
   function createMap(config) {
@@ -96,6 +97,10 @@
       container: "map",
       center: [config.center.lon, config.center.lat],
       zoom: config.zoom,
+      // Sem isso, o navegador pode limpar o canvas WebGL logo depois de
+      // desenhar cada quadro — capturar como imagem (toDataURL, botão
+      // "Salvar imagem") sairia em branco/preto na maior parte das vezes.
+      preserveDrawingBuffer: true,
       style: isVector
         ? config.tile_source.url
         : {
@@ -763,6 +768,44 @@
       if (!state.medindo) return;
       state.pontosMedicao.push([e.lngLat.lng, e.lngLat.lat]);
       atualizarDesenho();
+    });
+  }
+
+  // ---- Salvar mapa como imagem --------------------------------------------
+  //
+  // Captura o canvas do MapLibre (precisa de preserveDrawingBuffer:true
+  // na criação do mapa, senão sai em branco) e baixa como PNG. Só pega
+  // o que é desenhado NO mapa (tiles, camadas, a linha de medição) —
+  // marcador de busca e a barra lateral são elementos HTML por cima do
+  // mapa, não entram na imagem.
+
+  function setupExportarImagem() {
+    const btn = document.getElementById("export-btn");
+    btn.addEventListener("click", () => {
+      // Espera o navegador terminar de pintar o quadro atual antes de
+      // capturar — evita pegar um instante intermediário do desenho.
+      requestAnimationFrame(() => {
+        let dataUrl;
+        try {
+          dataUrl = state.map.getCanvas().toDataURL("image/png");
+        } catch (err) {
+          alert(`Não foi possível gerar a imagem: ${err.message}`);
+          return;
+        }
+
+        const agora = new Date();
+        const pad = (n) => String(n).padStart(2, "0");
+        const nomeArquivo =
+          `sigview-mapa-${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}` +
+          `-${pad(agora.getHours())}${pad(agora.getMinutes())}.png`;
+
+        const link = document.createElement("a");
+        link.href = dataUrl;
+        link.download = nomeArquivo;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      });
     });
   }
 

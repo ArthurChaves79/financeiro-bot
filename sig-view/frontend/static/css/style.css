@@ -396,6 +396,7 @@ html, body {
 }
 
 #measure-btn,
+#export-btn,
 #settings-btn {
   white-space: nowrap;
   padding: 8px 12px;
@@ -407,13 +408,14 @@ html, body {
   cursor: pointer;
 }
 
-/* Empurra os dois botões (Medir + Configurações) juntos pra direita —
-   só o primeiro deles precisa do auto-margin. */
+/* Empurra os botões (Medir + Salvar imagem + Configurações) juntos pra
+   direita — só o primeiro deles precisa do auto-margin. */
 #measure-btn {
   margin-left: auto;
 }
 
 #measure-btn:hover,
+#export-btn:hover,
 #settings-btn:hover {
   border-color: var(--accent);
 }

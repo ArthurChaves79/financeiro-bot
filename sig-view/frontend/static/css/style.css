@@ -101,6 +101,11 @@ html, body {
   cursor: default;
 }
 
+#search-results li.empty:hover {
+  background: transparent;
+  color: var(--text-dim);
+}
+
 #layers-panel {
   grid-area: layers;
   background: var(--panel-bg);

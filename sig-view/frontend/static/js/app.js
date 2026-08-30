@@ -522,6 +522,33 @@
 
   // ---- Busca -------------------------------------------------------------
 
+  // Histórico de buscas recentes — guardado só no navegador local (não
+  // é dado sensível de verdade, mas mesmo assim não faz sentido
+  // compartilhar entre usuários/instalações). Guarda o resultado
+  // inteiro selecionado (não só o texto digitado), pra poder voar
+  // direto pro lugar de novo sem rebuscar.
+  const HISTORICO_CHAVE = "sigview_busca_recente";
+  const HISTORICO_MAX = 8;
+
+  function lerHistorico() {
+    try {
+      const bruto = localStorage.getItem(HISTORICO_CHAVE);
+      return bruto ? JSON.parse(bruto) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function salvarNoHistorico(result) {
+    try {
+      const atual = lerHistorico().filter((r) => r.label !== result.label);
+      atual.unshift(result);
+      localStorage.setItem(HISTORICO_CHAVE, JSON.stringify(atual.slice(0, HISTORICO_MAX)));
+    } catch {
+      // localStorage indisponível (ex: modo privado) — sem histórico, sem problema
+    }
+  }
+
   function setupSearch() {
     const input = document.getElementById("search-input");
     const resultsEl = document.getElementById("search-results");
@@ -531,11 +558,35 @@
       clearTimeout(debounceTimer);
       const q = input.value.trim();
       if (q.length < 2) {
-        hideResults();
+        mostrarHistorico();
         return;
       }
       debounceTimer = setTimeout(() => runSearch(q), 250);
     });
+
+    input.addEventListener("focus", () => {
+      if (input.value.trim().length < 2) mostrarHistorico();
+    });
+
+    function mostrarHistorico() {
+      const historico = lerHistorico();
+      if (!historico.length) {
+        hideResults();
+        return;
+      }
+      resultsEl.innerHTML = "";
+      const titulo = document.createElement("li");
+      titulo.className = "empty";
+      titulo.textContent = "Buscas recentes";
+      resultsEl.appendChild(titulo);
+      for (const r of historico) {
+        const li = document.createElement("li");
+        li.textContent = `🕑 ${r.label}`;
+        li.addEventListener("click", () => selectResult(r));
+        resultsEl.appendChild(li);
+      }
+      resultsEl.hidden = false;
+    }
 
     document.addEventListener("click", (e) => {
       if (!resultsEl.contains(e.target) && e.target !== input) hideResults();
@@ -578,6 +629,7 @@
 
     function selectResult(result) {
       hideResults();
+      salvarNoHistorico(result);
       input.value = result.label;
       state.map.flyTo({ center: [result.lon, result.lat], zoom: 17 });
       if (state.marker) state.marker.remove();

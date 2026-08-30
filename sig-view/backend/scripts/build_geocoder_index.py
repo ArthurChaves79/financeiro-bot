@@ -35,7 +35,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.backup_util import backup_rotativo  # noqa: E402
+
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "geocoder.db"
+BACKUPS_DIR = Path(__file__).resolve().parent.parent / "data" / "backups"
 
 REQUIRED_COLUMNS = ["tipo", "logradouro", "bairro", "cidade", "cep", "lat", "lon"]
 
@@ -202,6 +206,12 @@ def build(csv_paths: Path | list[Path], db_path: Path, column_map: dict[str, str
         )
 
     if db_path.exists():
+        # Proteção extra além da checagem acima (CSV vazio já é
+        # recusado antes de chegar aqui) — guarda as últimas 3 versões
+        # do banco antes de apagar, caso algo dê errado depois disso
+        # (import interrompido no meio, CSV com dado errado que só se
+        # percebe depois etc.). Ver app/backup_util.py.
+        backup_rotativo(db_path, BACKUPS_DIR)
         db_path.unlink()
 
     conn = ensure_schema(db_path)

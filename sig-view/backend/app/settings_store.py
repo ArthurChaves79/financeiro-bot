@@ -14,9 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from . import tiles as tiles_module
+from .backup_util import backup_rotativo
 from .config import BASE_DIR, settings
 
 CONFIG_FILE = BASE_DIR / "data" / "config.json"
+BACKUPS_DIR = BASE_DIR / "data" / "backups"
 
 # Pasta onde o usuário pode colocar um ou mais .mbtiles prontos (ex:
 # ruas.mbtiles, satelite.mbtiles) pra escolher entre eles direto pela
@@ -114,6 +116,7 @@ def update_settings(data: dict[str, Any]) -> dict[str, Any]:
     _apply(data)
 
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    backup_rotativo(CONFIG_FILE, BACKUPS_DIR)  # guarda a versão anterior antes de sobrescrever
     current = get_editable_settings()
     CONFIG_FILE.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
     return current

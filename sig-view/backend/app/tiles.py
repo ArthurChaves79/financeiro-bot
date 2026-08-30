@@ -293,17 +293,16 @@ PALETAS = {
 
 _FONTE_PADRAO = "Noto Sans Regular"
 
-# Rótulos ligados um de cada vez, testando com o usuário real entre
-# cada passo — a primeira tentativa (todos de uma vez) deixou o mapa
-# em branco sem erro visível, e sem acesso a um navegador de verdade
-# aqui pra reproduzir, é mais seguro isolar qual camada é a culpada do
-# que tentar tudo de novo. "place" (nome de bairro/cidade, um ponto) é
-# o mais simples; os de rua usam symbol-placement=line, que precisa
-# calcular onde encaixar o texto ao longo da geometria da via — mais
-# arriscado com dado real (linha degenerada, auto-interseção etc.).
+# Causa raiz da tela em branco encontrada e corrigida: a rota /fonts/
+# devolvia um erro 404 com corpo em JSON quando a fonte não estava
+# baixada — o MapLibre esperava protobuf binário ali, e travava o
+# processamento do estilo inteiro. Corrigido pra devolver vazio (204,
+# igual à rota de tiles) nesse caso. Confirmado com o usuário: com
+# "place" ligado e a fonte ainda não baixada, o mapa funciona normal
+# (só sem o texto, como esperado). Religando os rótulos de rua também.
 _ROTULO_PLACE_ATIVO = True
-_ROTULO_ROAD_MAJOR_ATIVO = False
-_ROTULO_ROAD_MINOR_ATIVO = False
+_ROTULO_ROAD_MAJOR_ATIVO = True
+_ROTULO_ROAD_MINOR_ATIVO = True
 _ALGUM_ROTULO_ATIVO = _ROTULO_PLACE_ATIVO or _ROTULO_ROAD_MAJOR_ATIVO or _ROTULO_ROAD_MINOR_ATIVO
 
 

@@ -84,7 +84,7 @@
         "fontes:", Object.keys(state.map.getStyle().sources)
       );
       criarCamadasDeMedicao();
-      criarCamadaDeRaioDeVizinhos();
+      criarCamadaDeDestaqueConfrontantes();
       await loadLayersPanel();
     });
     setupSearch();
@@ -483,6 +483,10 @@
       state.map.on("click", id, (e) => {
         if (state.medindo) return; // com a régua ativa, o clique é pra marcar ponto, não abrir a feature
         const feature = e.features[0];
+        if (state.buscandoVizinhos) {
+          state.selecionarConfrontantes?.(feature, { titulo: camada.nome || layerId, cor });
+          return;
+        }
         const props = feature.properties || {};
         const titulo = props.nome || camada.nome || layerId;
         abrirPainelFeature(titulo, cor, props, feature.geometry);
@@ -850,105 +854,199 @@
     });
   }
 
-  // ---- Busca por vizinhos (🎯) ---------------------------------------------
+  // ---- Confrontantes (🧭) --------------------------------------------------
   //
-  // Clica um ponto no mapa, lista tudo que estiver dentro de um raio
-  // (em qualquer camada ligada), ordenado por distância. Útil pra
-  // notificação de confrontantes/vizinhos num processo. A distância é
-  // até a BORDA de cada feature (0 se o ponto cair dentro do próprio
-  // polígono), não até o centro — mais correto pra lotes vizinhos.
+  // Clica um lote (polígono) e lista os OUTROS polígonos — em qualquer
+  // camada ligada — cuja linha divisória toca a dele diretamente (não
+  // é busca por raio: é "faz divisa", com uma tolerância pequena em
+  // metros pra absorver folgas comuns de digitalização entre bases
+  // diferentes). Mostra endereço + matrícula/transcrição de cada um.
 
-  const NEIGHBORS_CIRCLE_SOURCE_ID = "sigview-vizinhos-raio";
-  const NEIGHBORS_CIRCLE_LAYER_ID = "sigview-vizinhos-raio-linha";
+  const CONFRONTANTES_DESTAQUE_SOURCE_ID = "sigview-confrontantes-destaque";
+  const CONFRONTANTES_DESTAQUE_LAYER_ID = "sigview-confrontantes-destaque-linha";
 
-  function criarCamadaDeRaioDeVizinhos() {
-    state.map.addSource(NEIGHBORS_CIRCLE_SOURCE_ID, {
+  function criarCamadaDeDestaqueConfrontantes() {
+    state.map.addSource(CONFRONTANTES_DESTAQUE_SOURCE_ID, {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
     });
     state.map.addLayer({
-      id: NEIGHBORS_CIRCLE_LAYER_ID,
+      id: CONFRONTANTES_DESTAQUE_LAYER_ID,
       type: "line",
-      source: NEIGHBORS_CIRCLE_SOURCE_ID,
-      paint: { "line-color": "#3fa9f5", "line-width": 2, "line-dasharray": [3, 2] },
+      source: CONFRONTANTES_DESTAQUE_SOURCE_ID,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        // azul = o lote selecionado; laranja = quem faz divisa com ele
+        "line-color": ["case", ["==", ["get", "papel"], "selecionado"], "#3fa9f5", "#f5a93f"],
+        "line-width": 3,
+      },
     });
   }
 
-  // Gera um polígono aproximando um círculo de `raioM` metros ao redor
-  // de `centro` — só pra referência visual de onde o raio pesquisado
-  // realmente cobre no mapa.
-  function _circuloGeoJSON(centro, raioM, pontos = 64) {
-    const mLat = (Math.PI / 180) * _RAIO_TERRA_M;
-    const mLon = mLat * Math.cos((centro[1] * Math.PI) / 180);
-    const anel = [];
-    for (let i = 0; i <= pontos; i++) {
-      const angulo = (i / pontos) * 2 * Math.PI;
-      const x = raioM * Math.cos(angulo);
-      const y = raioM * Math.sin(angulo);
-      anel.push([centro[0] + x / mLon, centro[1] + y / mLat]);
-    }
-    return { type: "Feature", geometry: { type: "Polygon", coordinates: [anel] }, properties: {} };
+  // Só os anéis externos importam pra "faz divisa" (buracos internos
+  // não são fronteira com o lote vizinho).
+  function _aneisExternos(geometry) {
+    if (geometry.type === "Polygon") return [geometry.coordinates[0]];
+    if (geometry.type === "MultiPolygon") return geometry.coordinates.map((p) => p[0]);
+    return [];
   }
 
-  function _tituloDaFeature(feature, tituloCamada) {
-    const props = feature.properties || {};
-    return props.nome || props.Nome || tituloCamada;
+  function _orientacao(p, q, r) {
+    const val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]);
+    if (Math.abs(val) < 1e-9) return 0;
+    return val > 0 ? 1 : 2;
+  }
+
+  function _noSegmento(p, q, r) {
+    return (
+      Math.min(p[0], r[0]) - 1e-9 <= q[0] && q[0] <= Math.max(p[0], r[0]) + 1e-9 &&
+      Math.min(p[1], r[1]) - 1e-9 <= q[1] && q[1] <= Math.max(p[1], r[1]) + 1e-9
+    );
+  }
+
+  // Teste clássico de interseção de segmentos (orientação + casos
+  // colineares) — sem isso, dois segmentos que se cruzam no meio (não
+  // nas pontas) passariam despercebidos só olhando ponto-a-segmento.
+  function _segmentosSeCruzam(p1, q1, p2, q2) {
+    const o1 = _orientacao(p1, q1, p2), o2 = _orientacao(p1, q1, q2);
+    const o3 = _orientacao(p2, q2, p1), o4 = _orientacao(p2, q2, q1);
+    if (o1 !== o2 && o3 !== o4) return true;
+    if (o1 === 0 && _noSegmento(p1, p2, q1)) return true;
+    if (o2 === 0 && _noSegmento(p1, q2, q1)) return true;
+    if (o3 === 0 && _noSegmento(p2, p1, q2)) return true;
+    if (o4 === 0 && _noSegmento(p2, q1, q2)) return true;
+    return false;
+  }
+
+  function _distanciaSegmentoSegmento(a1, a2, b1, b2) {
+    if (_segmentosSeCruzam(a1, a2, b1, b2)) return 0;
+    return Math.min(
+      _distanciaPontoSegmento(a1, b1, b2),
+      _distanciaPontoSegmento(a2, b1, b2),
+      _distanciaPontoSegmento(b1, a1, a2),
+      _distanciaPontoSegmento(b2, a1, a2)
+    );
+  }
+
+  // Distância mínima entre as BORDAS de dois polígonos (0 quando as
+  // linhas se tocam ou se cruzam) — projeta os dois num referencial
+  // local comum (metros) antes de comparar segmento a segmento.
+  function distanciaEntrePoligonos(geomA, geomB) {
+    const aneisA = _aneisExternos(geomA);
+    const aneisB = _aneisExternos(geomB);
+    if (!aneisA.length || !aneisB.length) return Infinity;
+    const origem = aneisA[0][0];
+    const proj = (pt) => _projetarLocal(pt, origem);
+
+    let min = Infinity;
+    for (const anelA of aneisA) {
+      for (let i = 0; i < anelA.length - 1; i++) {
+        const a1 = proj(anelA[i]), a2 = proj(anelA[i + 1]);
+        for (const anelB of aneisB) {
+          for (let j = 0; j < anelB.length - 1; j++) {
+            const d = _distanciaSegmentoSegmento(a1, a2, proj(anelB[j]), proj(anelB[j + 1]));
+            if (d < min) min = d;
+            if (min === 0) return 0;
+          }
+        }
+      }
+    }
+    return min;
+  }
+
+  // Endereço e número de registro resumidos — mesmos campos
+  // reconhecidos usados na barra lateral de detalhes (CAMPOS_CONHECIDOS),
+  // só que soltos aqui (sem "consumir" nada de um índice compartilhado),
+  // pra montar uma linha curta de listagem.
+  function _enderecoResumo(props) {
+    const indice = indexarPropriedades(props);
+    const descartar = new Set();
+    const tipo = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.tipoLogradouro);
+    const logradouro = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.logradouro);
+    const numero = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.numeroEndereco);
+    const endereco = [tipo, logradouro].filter(Boolean).join(" ").trim() + (numero ? `, ${numero}` : "");
+    return endereco.trim() || null;
+  }
+
+  function _registroResumo(props) {
+    const indice = indexarPropriedades(props);
+    const descartar = new Set();
+    const matricula = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.matricula);
+    if (matricula) return `Matrícula ${matricula}`;
+    const transcricao = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.transcricao);
+    if (transcricao) return `Transcrição ${transcricao}`;
+    return null;
   }
 
   function setupVizinhos() {
     const btn = document.getElementById("neighbors-btn");
     const panel = document.getElementById("neighbors-panel");
     const closeBtn = document.getElementById("neighbors-panel-close");
-    const raioInput = document.getElementById("neighbors-raio");
+    const toleranciaInput = document.getElementById("neighbors-raio");
     const buscarBtn = document.getElementById("neighbors-buscar");
     const hintEl = document.getElementById("neighbors-hint");
     const listEl = document.getElementById("neighbors-list");
 
-    let pontoAtual = null; // [lon, lat] do último clique, pra "Atualizar" recalcular com raio novo
+    let poligonoSelecionado = null; // { feature, info } — o lote clicado, base da comparação
 
-    function limparCirculo() {
-      state.map.getSource(NEIGHBORS_CIRCLE_SOURCE_ID)?.setData({ type: "FeatureCollection", features: [] });
+    function renderLista(encontrados) {
+      listEl.innerHTML = "";
+      if (!encontrados.length) {
+        listEl.innerHTML = `<li class="neighbors-item" style="cursor:default">Nenhum confrontante encontrado com essa tolerância.</li>`;
+        return;
+      }
+      for (const { info, feature } of encontrados) {
+        const props = feature.properties || {};
+        const endereco = _enderecoResumo(props) || props.nome || info.titulo;
+        const registro = _registroResumo(props);
+
+        const li = document.createElement("li");
+        li.className = "neighbors-item";
+        li.innerHTML = `<span class="layer-swatch" style="background:${escapeHtml(info.cor)}"></span><span class="neighbors-item-label"></span>`;
+        li.querySelector(".neighbors-item-label").textContent = registro ? `${endereco} — ${registro}` : endereco;
+        li.addEventListener("click", () => {
+          const centro = centroideAproximado(feature.geometry);
+          if (centro) state.map.flyTo({ center: centro, zoom: 18 });
+          abrirPainelFeature(endereco, info.cor, props, feature.geometry);
+        });
+        listEl.appendChild(li);
+      }
     }
 
-    function executarBusca(centro) {
-      pontoAtual = centro;
-      const raioM = Math.max(1, Number(raioInput.value) || 100);
+    function executarBusca() {
+      if (!poligonoSelecionado) return;
+      const tolerancia = Math.max(0, Number(toleranciaInput.value) || 0);
 
       const encontrados = [];
-      for (const [layerId, info] of state.geojsonPorCamada) {
+      for (const [, info] of state.geojsonPorCamada) {
         for (const feature of info.geojson.features || []) {
-          const distancia = distanciaMinimaAteGeometria(centro, feature.geometry);
-          if (distancia <= raioM) {
-            encontrados.push({ layerId, info, feature, distancia });
-          }
+          if (feature === poligonoSelecionado.feature) continue; // não compara o lote com ele mesmo
+          if (feature.geometry?.type !== "Polygon" && feature.geometry?.type !== "MultiPolygon") continue;
+          const distancia = distanciaEntrePoligonos(poligonoSelecionado.feature.geometry, feature.geometry);
+          if (distancia <= tolerancia) encontrados.push({ info, feature, distancia });
         }
       }
       encontrados.sort((a, b) => a.distancia - b.distancia);
 
-      state.map.getSource(NEIGHBORS_CIRCLE_SOURCE_ID)?.setData(_circuloGeoJSON(centro, raioM));
+      state.map.getSource(CONFRONTANTES_DESTAQUE_SOURCE_ID)?.setData({
+        type: "FeatureCollection",
+        features: [
+          { type: "Feature", properties: { papel: "selecionado" }, geometry: poligonoSelecionado.feature.geometry },
+          ...encontrados.map((e) => ({ type: "Feature", properties: { papel: "confrontante" }, geometry: e.feature.geometry })),
+        ],
+      });
 
       hintEl.hidden = true;
-      listEl.innerHTML = "";
-      if (!encontrados.length) {
-        listEl.innerHTML = `<li class="neighbors-item" style="cursor:default">Nada num raio de ${raioM} m.</li>`;
+      renderLista(encontrados);
+    }
+
+    function selecionar(feature, info) {
+      if (feature.geometry?.type !== "Polygon" && feature.geometry?.type !== "MultiPolygon") {
+        alert("Clique num polígono (lote) — a busca de confrontantes não funciona em ponto/linha.");
         return;
       }
-      for (const { info, feature, distancia } of encontrados) {
-        const li = document.createElement("li");
-        li.className = "neighbors-item";
-        li.innerHTML = `
-          <span class="layer-swatch" style="background:${escapeHtml(info.cor)}"></span>
-          <span class="neighbors-item-label"></span>
-          <span class="neighbors-item-dist">${distancia < 1 ? "dentro" : `${Math.round(distancia)} m`}</span>
-        `;
-        li.querySelector(".neighbors-item-label").textContent = _tituloDaFeature(feature, info.titulo);
-        li.addEventListener("click", () => {
-          const centroFeature = centroideAproximado(feature.geometry);
-          if (centroFeature) state.map.flyTo({ center: centroFeature, zoom: 18 });
-          abrirPainelFeature(_tituloDaFeature(feature, info.titulo), info.cor, feature.properties || {}, feature.geometry);
-        });
-        listEl.appendChild(li);
-      }
+      poligonoSelecionado = { feature, info };
+      executarBusca();
     }
 
     function ativar() {
@@ -963,8 +1061,8 @@
       btn.classList.remove("active");
       panel.classList.remove("open");
       state.map.getCanvas().style.cursor = "";
-      limparCirculo();
-      pontoAtual = null;
+      state.map.getSource(CONFRONTANTES_DESTAQUE_SOURCE_ID)?.setData({ type: "FeatureCollection", features: [] });
+      poligonoSelecionado = null;
       hintEl.hidden = false;
       listEl.innerHTML = "";
     }
@@ -978,20 +1076,14 @@
       }
     });
     closeBtn.addEventListener("click", desativar);
-    buscarBtn.addEventListener("click", () => {
-      if (pontoAtual) executarBusca(pontoAtual);
-    });
+    buscarBtn.addEventListener("click", executarBusca);
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && state.buscandoVizinhos) desativar();
     });
 
-    state.map.on("click", (e) => {
-      if (!state.buscandoVizinhos) return;
-      executarBusca([e.lngLat.lng, e.lngLat.lat]);
-    });
-
     state.desativarVizinhos = desativar;
+    state.selecionarConfrontantes = selecionar; // chamado pelo clique normal de feature, quando o modo está ativo
   }
 
   // Centroide aproximado — mesma lógica usada no backend
@@ -1342,13 +1434,12 @@
     return `${m2.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} m²`;
   }
 
-  // ---- Geometria pra busca por vizinhos ------------------------------------
+  // ---- Geometria compartilhada (projeção local + distância ponto-segmento) --
   //
-  // Distância mínima de um ponto até qualquer tipo de geometria (ponto,
-  // linha ou polígono — incluindo "dentro do polígono" = 0). Mesma
-  // técnica de projeção local usada em areaAproximadaM2: converte tudo
-  // pra metros num referencial centrado no próprio ponto de busca antes
-  // de medir, boa o bastante pra distâncias de bairro/quarteirão.
+  // Base usada pela busca de confrontantes (distância entre bordas de
+  // dois polígonos). Mesma técnica de projeção local usada em
+  // areaAproximadaM2: converte tudo pra metros num referencial local
+  // antes de medir, boa o bastante pra distâncias de lote/quarteirão.
 
   function _projetarLocal([lon, lat], origem) {
     const mLat = (Math.PI / 180) * _RAIO_TERRA_M;
@@ -1363,68 +1454,6 @@
     let t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
     t = Math.max(0, Math.min(1, t));
     return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-  }
-
-  function _pontoDentroAnel([px, py], anel) {
-    let dentro = false;
-    for (let i = 0, j = anel.length - 1; i < anel.length; j = i++) {
-      const [xi, yi] = anel[i], [xj, yj] = anel[j];
-      const intersecta = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
-      if (intersecta) dentro = !dentro;
-    }
-    return dentro;
-  }
-
-  function _pontoDentroDePoligono(ponto, aneis) {
-    const [externo, ...buracos] = aneis;
-    if (!_pontoDentroAnel(ponto, externo)) return false;
-    return !buracos.some((buraco) => _pontoDentroAnel(ponto, buraco));
-  }
-
-  function distanciaMinimaAteGeometria(pontoOrigem, geometry) {
-    if (!geometry) return Infinity;
-    const p = [0, 0]; // o próprio ponto de origem, já projetado em relação a si mesmo
-    const proj = (pt) => _projetarLocal(pt, pontoOrigem);
-
-    function distAneis(aneis) {
-      let min = Infinity;
-      for (const anel of aneis) {
-        for (let i = 0; i < anel.length; i++) {
-          min = Math.min(min, _distanciaPontoSegmento(p, proj(anel[i]), proj(anel[(i + 1) % anel.length])));
-        }
-      }
-      return min;
-    }
-
-    switch (geometry.type) {
-      case "Point":
-        return _distanciaMetros(pontoOrigem, geometry.coordinates);
-      case "MultiPoint":
-        return Math.min(...geometry.coordinates.map((c) => _distanciaMetros(pontoOrigem, c)));
-      case "LineString": {
-        let min = Infinity;
-        const coords = geometry.coordinates;
-        for (let i = 0; i < coords.length - 1; i++) {
-          min = Math.min(min, _distanciaPontoSegmento(p, proj(coords[i]), proj(coords[i + 1])));
-        }
-        return min;
-      }
-      case "MultiLineString":
-        return Math.min(...geometry.coordinates.map((linha) => distanciaMinimaAteGeometria(pontoOrigem, { type: "LineString", coordinates: linha })));
-      case "Polygon":
-        if (_pontoDentroDePoligono(pontoOrigem, geometry.coordinates)) return 0;
-        return distAneis(geometry.coordinates);
-      case "MultiPolygon": {
-        let min = Infinity;
-        for (const poligono of geometry.coordinates) {
-          if (_pontoDentroDePoligono(pontoOrigem, poligono)) return 0;
-          min = Math.min(min, distAneis(poligono));
-        }
-        return min;
-      }
-      default:
-        return Infinity;
-    }
   }
 
   function montarLinhasPainel(props, geometry) {

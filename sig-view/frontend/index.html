@@ -17,7 +17,7 @@
         <ul id="search-results" hidden></ul>
       </div>
       <button id="measure-btn" type="button" title="Medir distância no mapa">📏 Medir</button>
-      <button id="neighbors-btn" type="button" title="Buscar lotes/camadas num raio de um ponto (notificação de vizinhos)">🎯 Vizinhos</button>
+      <button id="neighbors-btn" type="button" title="Clique um lote pra ver quem faz divisa direta com ele">🧭 Confrontantes</button>
       <button id="export-btn" type="button" title="Salvar o mapa atual como imagem (PNG)">📷 Salvar imagem</button>
       <button id="settings-btn" type="button" title="Configurações">⚙ Configurações</button>
     </header>
@@ -87,16 +87,16 @@
 
       <aside id="neighbors-panel">
         <div id="neighbors-panel-header">
-          <h3>🎯 Lotes próximos</h3>
+          <h3>🧭 Confrontantes</h3>
           <button id="neighbors-panel-close" type="button" aria-label="Fechar" title="Fechar">×</button>
         </div>
         <div id="neighbors-panel-controls">
-          <label for="neighbors-raio">Raio</label>
-          <input id="neighbors-raio" type="number" min="1" step="10" value="100" />
+          <label for="neighbors-raio">Tolerância</label>
+          <input id="neighbors-raio" type="number" min="0" step="0.5" value="1" />
           <span>m</span>
           <button id="neighbors-buscar" type="button">Atualizar</button>
         </div>
-        <p id="neighbors-hint" class="hint">Clique num ponto do mapa pra buscar.</p>
+        <p id="neighbors-hint" class="hint">Clique num lote (polígono) pra ver quem faz divisa com ele.</p>
         <ul id="neighbors-list"></ul>
       </aside>
     </div>

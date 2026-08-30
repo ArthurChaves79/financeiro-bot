@@ -112,9 +112,15 @@ def api_update_settings(data: dict) -> dict:
 @app.get("/tiles/style.json")
 def tiles_style(request: Request) -> dict:
     try:
-        return tiles_module.build_default_style(str(request.base_url))
+        style = tiles_module.build_default_style(str(request.base_url))
     except tiles_module.MbtilesUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # Log só pra diagnosticar os rótulos (sem DevTools disponível pra
+    # inspecionar isso pelo navegador) — mostra no terminal exatamente
+    # o que foi montado, sem precisar adivinhar. Pode remover depois.
+    ids_camadas = [c.get("id") for c in style.get("layers", [])]
+    print(f"[SIG View] /tiles/style.json servido — glyphs={style.get('glyphs')!r} camadas={ids_camadas}")
+    return style
 
 
 @app.get("/tiles/{z}/{x}/{y}")

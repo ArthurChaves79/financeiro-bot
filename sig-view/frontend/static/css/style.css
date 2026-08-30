@@ -974,6 +974,55 @@ html, body {
   color: #f66;
 }
 
+/* Repetição automática (agendamento) — ver app/agendamento.py. */
+#maint-agendamento {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.maint-checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px !important;
+  color: var(--text) !important;
+  margin: 0 0 4px !important;
+  cursor: pointer;
+}
+
+.maint-checkbox-label input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+#maint-agenda-detalhes {
+  margin: 10px 0 12px;
+  padding-left: 4px;
+}
+
+#maint-agenda-detalhes input {
+  max-width: 120px;
+}
+
+#maint-agenda-info {
+  margin: 6px 0 0 !important;
+}
+
+#maint-agenda-salvar {
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+#maint-agenda-salvar:hover {
+  border-color: var(--accent);
+}
+
 #maintenance-log-wrap {
   margin-top: 14px;
 }

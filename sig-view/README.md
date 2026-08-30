@@ -154,6 +154,27 @@ um significa) e clique em **Rodar**. O andamento (a mesma saída que
 apareceria no terminal) fica visível ali, atualizando sozinho, até
 terminar com sucesso ou erro. Só uma tarefa roda por vez.
 
+### Repetir automaticamente (re-sincronização agendada)
+
+Em cada tarefa, marque **"Repetir automaticamente enquanto o programa
+estiver aberto"** e escolha de quantas em quantas horas — clique em
+**💾 Salvar agendamento** (não precisa clicar em "Rodar" também). A
+partir daí, com o programa aberto, ela dispara sozinha no intervalo
+configurado, sem precisar voltar aqui pra clicar de novo.
+
+Pensado principalmente pra **"Vincular polígonos a um banco
+existente"**: se o CSV de atributos exportado do banco relacional é
+atualizado periodicamente numa pasta de rede (por outro processo, fora
+do SIG View), agende essa tarefa pra reprocessar o CSV a cada X horas
+e manter a camada `.geojson` sempre em dia, sem trabalho manual.
+
+Como o programa não fica ligado o tempo todo em cada computador
+(diferente de um servidor), isso não substitui uma Tarefa Agendada do
+Windows — só funciona enquanto alguém estiver com o SIG View aberto.
+Se precisar de sincronização mesmo com o programa fechado, configure
+uma Tarefa Agendada do Windows chamando o script correspondente
+diretamente (veja as seções de cada script abaixo).
+
 Os scripts mais específicos (conversão de GeoPackage/GeoJSON do
 GeoSampa, correção de geometrias, diagnóstico de `.mbtiles` etc.)
 continuam só por linha de comando mesmo — o painel cobre as tarefas

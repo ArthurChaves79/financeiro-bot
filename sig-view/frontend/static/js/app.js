@@ -14,6 +14,8 @@
     manutencaoTarefas: "/api/manutencao/tarefas",
     manutencaoExecutar: "/api/manutencao/executar",
     manutencaoStatus: (id) => `/api/manutencao/status/${encodeURIComponent(id)}`,
+    manutencaoAgendamentos: "/api/manutencao/agendamentos",
+    manutencaoAgendamento: (id) => `/api/manutencao/agendamentos/${encodeURIComponent(id)}`,
   };
 
   const state = {
@@ -1363,8 +1365,14 @@
     const logWrap = document.getElementById("maintenance-log-wrap");
     const logEl = document.getElementById("maintenance-log");
     const statusEl = document.getElementById("maintenance-status");
+    const agendaAtivoEl = document.getElementById("maint-agenda-ativo");
+    const agendaDetalhesEl = document.getElementById("maint-agenda-detalhes");
+    const agendaIntervaloEl = document.getElementById("maint-agenda-intervalo");
+    const agendaInfoEl = document.getElementById("maint-agenda-info");
+    const agendaSalvarBtn = document.getElementById("maint-agenda-salvar");
 
     let tarefas = [];
+    let agendamentos = []; // agendamentos já salvos (ver app/agendamento.py), um por tarefa_id
     let pollTimer = null;
 
     function showError(msg) {
@@ -1411,11 +1419,93 @@
       return tarefas.find((t) => t.id === tarefaSelect.value);
     }
 
+    // Lê os valores atuais do formulário e devolve {parametros, faltando}
+    // — usado tanto por "Rodar" quanto por "Salvar agendamento", já que
+    // os dois precisam dos mesmos campos preenchidos.
+    function coletarParametros(tarefa) {
+      const parametros = {};
+      for (const input of camposEl.querySelectorAll("input[data-campo]")) {
+        parametros[input.dataset.campo] = input.value.trim();
+      }
+      const faltando = (tarefa.campos || []).filter(
+        (campo) => campo.obrigatorio && !parametros[campo.nome]
+      );
+      return { parametros, faltando };
+    }
+
+    function formatarDataHora(isoUtc) {
+      if (!isoUtc) return null;
+      const data = new Date(isoUtc);
+      if (Number.isNaN(data.getTime())) return null;
+      return data.toLocaleString("pt-BR");
+    }
+
+    // Preenche o bloco "Repetir automaticamente" com o que já estiver
+    // salvo pra essa tarefa (se houver) — cada tarefa tem seu próprio
+    // agendamento independente.
+    function atualizarAgendaUI(tarefa) {
+      const agendamento = agendamentos.find((a) => a.tarefa_id === tarefa.id);
+      agendaAtivoEl.checked = !!(agendamento && agendamento.ativo);
+      agendaIntervaloEl.value = (agendamento && agendamento.intervalo_horas) || 24;
+      agendaDetalhesEl.hidden = !agendaAtivoEl.checked;
+
+      const partesInfo = [];
+      const ultima = formatarDataHora(agendamento && agendamento.ultima_execucao);
+      if (ultima) partesInfo.push(`Último disparo: ${ultima}`);
+      if (agendamento && agendamento.ativo) {
+        partesInfo.push(`repete a cada ${agendamento.intervalo_horas}h enquanto o programa estiver aberto`);
+      }
+      agendaInfoEl.textContent = partesInfo.join(" — ");
+    }
+
+    agendaAtivoEl.addEventListener("change", () => {
+      agendaDetalhesEl.hidden = !agendaAtivoEl.checked;
+    });
+
+    agendaSalvarBtn.addEventListener("click", async () => {
+      const tarefa = tarefaSelecionada();
+      if (!tarefa) return;
+      errorEl.hidden = true;
+
+      const { parametros, faltando } = coletarParametros(tarefa);
+      const ativo = agendaAtivoEl.checked;
+      const intervaloHoras = Number(agendaIntervaloEl.value);
+
+      if (ativo && faltando.length) {
+        showError(`Preencha antes de agendar: ${faltando.map((c) => c.rotulo).join(", ")}`);
+        return;
+      }
+      if (ativo && (!intervaloHoras || intervaloHoras <= 0)) {
+        showError("Informe um intervalo (em horas) maior que zero.");
+        return;
+      }
+
+      agendaSalvarBtn.disabled = true;
+      try {
+        const resp = await fetch(API.manutencaoAgendamento(tarefa.id), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ativo, intervalo_horas: intervaloHoras, parametros }),
+        });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(body.detail || `Erro ${resp.status}`);
+
+        agendamentos = agendamentos.filter((a) => a.tarefa_id !== tarefa.id);
+        agendamentos.push({ tarefa_id: tarefa.id, nome: tarefa.nome, ...body });
+        atualizarAgendaUI(tarefa);
+      } catch (err) {
+        showError(`Não foi possível salvar o agendamento: ${err.message}`);
+      } finally {
+        agendaSalvarBtn.disabled = false;
+      }
+    });
+
     tarefaSelect.addEventListener("change", () => {
       const tarefa = tarefaSelecionada();
       if (!tarefa) return;
       descricaoEl.textContent = tarefa.descricao;
       renderCampos(tarefa);
+      atualizarAgendaUI(tarefa);
     });
 
     btn.addEventListener("click", async () => {
@@ -1430,8 +1520,12 @@
       pararPoll();
 
       try {
-        const resp = await fetchJSON(API.manutencaoTarefas);
-        tarefas = resp.tarefas || [];
+        const [tarefasResp, agendamentosResp] = await Promise.all([
+          fetchJSON(API.manutencaoTarefas),
+          fetchJSON(API.manutencaoAgendamentos).catch(() => ({ agendamentos: [] })),
+        ]);
+        tarefas = tarefasResp.tarefas || [];
+        agendamentos = agendamentosResp.agendamentos || [];
         tarefaSelect.innerHTML = "";
         for (const tarefa of tarefas) {
           const opt = document.createElement("option");
@@ -1443,6 +1537,7 @@
           tarefaSelect.value = tarefas[0].id;
           descricaoEl.textContent = tarefas[0].descricao;
           renderCampos(tarefas[0]);
+          atualizarAgendaUI(tarefas[0]);
         }
       } catch (err) {
         showError(`Não foi possível carregar as tarefas: ${err.message}`);
@@ -1471,14 +1566,7 @@
       if (!tarefa) return;
       errorEl.hidden = true;
 
-      const parametros = {};
-      for (const input of camposEl.querySelectorAll("input[data-campo]")) {
-        parametros[input.dataset.campo] = input.value.trim();
-      }
-
-      const faltando = (tarefa.campos || []).filter(
-        (campo) => campo.obrigatorio && !parametros[campo.nome]
-      );
+      const { parametros, faltando } = coletarParametros(tarefa);
       if (faltando.length) {
         showError(`Preencha: ${faltando.map((c) => c.rotulo).join(", ")}`);
         return;

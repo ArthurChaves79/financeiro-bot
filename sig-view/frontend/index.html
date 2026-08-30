@@ -79,6 +79,19 @@
 
         <div id="maint-campos"></div>
 
+        <div id="maint-agendamento">
+          <label class="maint-checkbox-label">
+            <input id="maint-agenda-ativo" type="checkbox" />
+            Repetir automaticamente enquanto o programa estiver aberto
+          </label>
+          <div id="maint-agenda-detalhes" hidden>
+            <label for="maint-agenda-intervalo">A cada (horas)</label>
+            <input id="maint-agenda-intervalo" type="number" min="1" step="1" value="24" />
+            <p id="maint-agenda-info" class="hint"></p>
+          </div>
+          <button id="maint-agenda-salvar" type="button">💾 Salvar agendamento (com os campos acima)</button>
+        </div>
+
         <p id="maintenance-error" class="error" hidden></p>
 
         <div id="maintenance-log-wrap" hidden>

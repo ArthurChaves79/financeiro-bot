@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
+from . import agendamento as agendamento_module
 from . import layers as layers_module
 from . import manutencao as manutencao_module
 from . import search as search_module
@@ -33,7 +34,7 @@ app = FastAPI(title="SIG View", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "PUT"],
+    allow_methods=["GET", "PUT", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -141,6 +142,37 @@ def api_manutencao_status(execucao_id: str) -> dict:
         return manutencao_module.obter_status(execucao_id)
     except manutencao_module.TarefaInvalida as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# --- Re-sincronização automática/agendada — ver app/agendamento.py
+
+@app.on_event("startup")
+def _iniciar_agendamentos() -> None:
+    agendamento_module.iniciar_verificacao_em_segundo_plano()
+
+
+@app.get("/api/manutencao/agendamentos")
+def api_listar_agendamentos() -> dict:
+    return {"agendamentos": agendamento_module.listar_agendamentos()}
+
+
+@app.put("/api/manutencao/agendamentos/{tarefa_id}")
+def api_salvar_agendamento(tarefa_id: str, data: dict) -> dict:
+    try:
+        return agendamento_module.salvar_agendamento(
+            tarefa_id,
+            ativo=bool(data.get("ativo")),
+            intervalo_horas=data.get("intervalo_horas"),
+            parametros=data.get("parametros") or {},
+        )
+    except agendamento_module.AgendamentoInvalido as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/manutencao/agendamentos/{tarefa_id}")
+def api_remover_agendamento(tarefa_id: str) -> dict:
+    agendamento_module.remover_agendamento(tarefa_id)
+    return {"ok": True}
 
 
 # --- Servidor de tiles embutido (lê direto de um .mbtiles) ------------------

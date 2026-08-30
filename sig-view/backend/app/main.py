@@ -22,6 +22,7 @@ from . import layers as layers_module
 from . import search as search_module
 from . import settings_store
 from . import tiles as tiles_module
+from . import versao as versao_module
 from .config import settings
 
 settings_store.load_overrides_into_settings()
@@ -54,6 +55,14 @@ def get_config() -> dict:
             "type": settings.tile_source_type,
         },
     }
+
+
+@app.get("/api/version")
+def api_version() -> dict:
+    """Checagem de versão nova (opcional, via pasta de rede) — ver
+    app/versao.py. Nunca falha: sem SIGVIEW_VERSAO_CHECK_PATH
+    configurado, ou com a rede fora do ar, só devolve "sem novidade"."""
+    return versao_module.checar_versao_disponivel(settings.versao_check_path)
 
 
 @app.get("/api/search")

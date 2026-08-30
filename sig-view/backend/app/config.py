@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     # bounds: oeste, sul, leste, norte
     map_bounds: tuple[float, float, float, float] = (-53.11, -25.31, -44.16, -19.78)
 
+    # Arquivo de rede (opcional) onde o TI/quem administra deixa o
+    # número da versão mais nova disponível — ver app/versao.py. Vazio
+    # (padrão) desliga a checagem, sem nenhum aviso.
+    versao_check_path: Path | None = None
+
     host: str = "0.0.0.0"
     port: int = 8000
 

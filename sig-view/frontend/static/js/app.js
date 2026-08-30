@@ -10,6 +10,7 @@
     layers: "/api/layers",
     layer: (id) => `/api/layers/${encodeURIComponent(id)}`,
     settings: "/api/settings",
+    version: "/api/version",
   };
 
   const state = {
@@ -93,6 +94,53 @@
     setupMeasure();
     setupExportarImagem();
     setupVizinhos();
+    checarVersaoNova();
+  }
+
+  // Verificação de versão nova (opcional, ⚙ Configurações > "Verificar
+  // versão nova em") — só avisa, nunca baixa/instala nada sozinho. Se
+  // não estiver configurado, ou a rede estiver fora do ar, o backend
+  // sempre devolve atualizacao_disponivel: false (ver app/versao.py),
+  // então isso não precisa de nenhum try/catch extra além do já
+  // existente em fetchJSON pra não travar o carregamento do mapa.
+  const VERSAO_DISPENSADA_CHAVE = "sigview_versao_dispensada";
+
+  async function checarVersaoNova() {
+    let info;
+    try {
+      info = await fetchJSON(API.version);
+    } catch {
+      return; // nunca deixa isso atrapalhar o resto do programa
+    }
+    if (!info.atualizacao_disponivel) return;
+
+    let dispensada = "";
+    try {
+      dispensada = localStorage.getItem(VERSAO_DISPENSADA_CHAVE) || "";
+    } catch {
+      // localStorage indisponível (ex: modo privado) — só não lembra a dispensa
+    }
+    if (dispensada === info.versao_disponivel) return;
+
+    mostrarBannerVersaoNova(info.versao_disponivel);
+  }
+
+  function mostrarBannerVersaoNova(versaoDisponivel) {
+    const banner = document.createElement("div");
+    banner.id = "version-banner";
+    banner.innerHTML = `
+      <span>🆕 Versão ${versaoDisponivel} disponível — fale com quem administra o programa pra atualizar.</span>
+      <button type="button" id="version-banner-fechar" aria-label="Dispensar" title="Dispensar">×</button>
+    `;
+    document.body.appendChild(banner);
+    banner.querySelector("#version-banner-fechar").addEventListener("click", () => {
+      try {
+        localStorage.setItem(VERSAO_DISPENSADA_CHAVE, versaoDisponivel);
+      } catch {
+        // sem localStorage, só fecha por essa sessão mesmo
+      }
+      banner.remove();
+    });
   }
 
   function createMap(config) {
@@ -1175,6 +1223,7 @@
       tile_source_url: document.getElementById("cfg-tile-url"),
       tile_source_type: document.getElementById("cfg-tile-type"),
       map_style: document.getElementById("cfg-map-style"),
+      versao_check_path: document.getElementById("cfg-versao-check"),
     };
 
     const mapaSelect = document.getElementById("cfg-mapa-select");

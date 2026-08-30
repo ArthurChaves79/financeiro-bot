@@ -872,3 +872,34 @@ html, body {
   opacity: 0.5;
   cursor: default;
 }
+
+/* Aviso de versão nova (⚙ Configurações > "Verificar versão nova em") —
+   faixa fina no topo, por cima de tudo, some ao clicar no × (lembrado
+   por versão via localStorage, não volta a incomodar pra essa mesma
+   versão depois de dispensado). */
+#version-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #06202f;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+#version-banner-fechar {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}

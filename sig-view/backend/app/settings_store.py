@@ -25,6 +25,14 @@ BACKUPS_DIR = BASE_DIR / "data" / "backups"
 # tela de Configurações, em vez de digitar o caminho completo.
 MAPS_DIR = BASE_DIR / "data" / "maps"
 
+def _path_ou_none(valor: str) -> Path | None:
+    # Diferente dos outros campos de caminho (obrigatórios), este pode
+    # ficar vazio de propósito — "" desliga a checagem de versão nova,
+    # em vez de virar Path(".") (que Path("") faria).
+    texto = str(valor).strip()
+    return Path(texto) if texto else None
+
+
 # Campos que a tela de Configurações pode alterar.
 EDITABLE_FIELDS = {
     "layers_dir": Path,
@@ -33,6 +41,7 @@ EDITABLE_FIELDS = {
     "tile_source_url": str,
     "tile_source_type": str,
     "map_style": str,
+    "versao_check_path": _path_ou_none,
 }
 
 
@@ -86,6 +95,7 @@ def get_editable_settings() -> dict[str, Any]:
         "tile_source_url": settings.tile_source_url,
         "tile_source_type": settings.tile_source_type,
         "map_style": settings.map_style,
+        "versao_check_path": str(settings.versao_check_path) if settings.versao_check_path else "",
     }
 
 

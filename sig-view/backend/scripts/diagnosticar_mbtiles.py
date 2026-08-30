@@ -9,6 +9,7 @@ Uso:
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -31,14 +32,37 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
 
     print("\n=== metadata ===")
+    json_bruto = None
     try:
         for row in conn.execute("SELECT name, value FROM metadata ORDER BY name"):
             valor = row["value"]
+            if row["name"] == "json":
+                json_bruto = valor  # guarda inteiro, sem cortar — é ele que lista as camadas/campos
             if len(valor) > 120:
                 valor = valor[:120] + "... (cortado)"
             print(f"  {row['name']}: {valor}")
     except sqlite3.OperationalError as exc:
         print(f"  [ERRO] Não achou a tabela metadata: {exc}")
+
+    # A chave "json" dos metadados lista as camadas vetoriais (vector_layers)
+    # e os campos (atributos) de cada uma — é a fonte da verdade de quais
+    # "source-layer"/nomes de propriedade existem de verdade no arquivo,
+    # sem precisar adivinhar (ex: pra saber se é "transportation_name" e
+    # "name", ou outro nome, antes de escrever um estilo em cima disso).
+    print("\n=== camadas vetoriais (vector_layers) ===")
+    if not json_bruto:
+        print("  (sem chave 'json' nos metadados — não dá pra listar as camadas daqui)")
+    else:
+        try:
+            info = json.loads(json_bruto)
+            camadas = info.get("vector_layers", [])
+            if not camadas:
+                print("  (a chave 'json' existe, mas não tem 'vector_layers' dentro)")
+            for camada in camadas:
+                campos = ", ".join(camada.get("fields", {}).keys())
+                print(f"  {camada.get('id')} — campos: {campos or '(nenhum)'}")
+        except json.JSONDecodeError as exc:
+            print(f"  [ERRO] A chave 'json' não é um JSON válido: {exc}")
 
     print("\n=== quantidade de tiles por zoom ===")
     try:

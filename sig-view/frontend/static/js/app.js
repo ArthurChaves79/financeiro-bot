@@ -546,8 +546,9 @@
           return;
         }
         const props = feature.properties || {};
-        const titulo = props.nome || camada.nome || layerId;
-        abrirPainelFeature(titulo, cor, props, feature.geometry);
+        // Endereço tem prioridade como título — abrirPainelFeature já
+        // calcula isso; aqui só entra o que usar se não tiver endereço/nome.
+        abrirPainelFeature(camada.nome || layerId, cor, props, feature.geometry);
       });
       state.map.on("mouseenter", id, () => { state.map.getCanvas().style.cursor = "pointer"; });
       state.map.on("mouseleave", id, () => { state.map.getCanvas().style.cursor = ""; });
@@ -777,7 +778,7 @@
       }
 
       const props = feature.properties || {};
-      abrirPainelFeature(props.nome || result.label, info.cor, props, feature.geometry);
+      abrirPainelFeature(result.label, info.cor, props, feature.geometry);
       return true;
     }
   }
@@ -2021,13 +2022,21 @@
     document.getElementById("feature-panel").classList.remove("open");
   }
 
-  function abrirPainelFeature(titulo, cor, props, geometry) {
+  // tituloFallback só é usado quando a própria feature não tem
+  // endereço nem "nome" — o endereço (Tipo + Logradouro + nº) tem
+  // prioridade como título do painel, calculado junto com o resto dos
+  // atributos em montarLinhasPainel (pra não aparecer de novo como
+  // linha comum lá embaixo).
+  function abrirPainelFeature(tituloFallback, cor, props, geometry) {
     const painel = document.getElementById("feature-panel");
+    const propsOk = props || {};
+    const { titulo: enderecoTitulo, linhas } = montarLinhasPainel(propsOk, geometry);
+    const titulo = enderecoTitulo || formatarValorPropriedade(propsOk.nome) || tituloFallback || "Detalhes";
+
     document.getElementById("feature-panel-title").textContent = titulo;
     document.getElementById("feature-panel-title").title = titulo;
     document.getElementById("feature-panel-swatch").style.background = cor || "#3fa9f5";
 
-    const linhas = montarLinhasPainel(props || {}, geometry);
     document.getElementById("feature-panel-body").innerHTML = linhas.length
       ? linhas.map(renderLinhaPainel).join("")
       : `<div class="feature-panel-empty">Sem atributos</div>`;
@@ -2076,9 +2085,34 @@
       .replace(/[^a-z0-9]/g, "");
   }
 
+  // Alguns exports gravam uma lista como TEXTO puro em vez de um array
+  // de verdade (comum quando um campo repetido de uma consulta SQL
+  // vira string na hora de gerar o CSV) — ex: a propriedade vale
+  // literalmente "['Rua Exemplo']" ou '["Rua Exemplo", "Rua Outra"]'.
+  // Sem isso, aparecia com colchetes/aspas mesmo no painel. Só mexe em
+  // texto que já parece uma lista (começa com "[" e termina com "]");
+  // qualquer outra coisa passa direto, sem risco de estragar um valor
+  // que só por acaso comece com colchete.
+  function _desembrulharListaTextual(texto) {
+    if (!(texto.startsWith("[") && texto.endsWith("]"))) return texto;
+    try {
+      const parsed = JSON.parse(texto); // formato JSON (aspas duplas) já resolve certo
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean).join(", ");
+    } catch {
+      // não é JSON válido — pode ser um repr de lista Python (aspas simples), tenta na unha abaixo
+    }
+    const partes = texto
+      .slice(1, -1)
+      .split(",")
+      .map((p) => p.trim().replace(/^['"]|['"]$/g, ""))
+      .filter(Boolean);
+    return partes.length ? partes.join(", ") : texto;
+  }
+
   // Converte qualquer valor de propriedade pra texto legível — inclusive
   // array/objeto (que antes viravam "[object Object]" no popup, o
-  // "aparece entre colchetes" que causava confusão).
+  // "aparece entre colchetes" que causava confusão), e listas gravadas
+  // como texto puro (ver _desembrulharListaTextual).
   function formatarValorPropriedade(v) {
     if (v === null || v === undefined) return "";
     if (Array.isArray(v)) {
@@ -2087,7 +2121,7 @@
     if (typeof v === "object") {
       return Object.values(v).map(formatarValorPropriedade).filter(Boolean).join(", ");
     }
-    return String(v).trim();
+    return _desembrulharListaTextual(String(v).trim());
   }
 
   function indexarPropriedades(props) {
@@ -2196,10 +2230,30 @@
     return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
 
+  // Devolve { titulo, linhas }: titulo é o Endereço (Tipo + Logradouro
+  // + nº), usado como cabeçalho do painel em vez de aparecer solto no
+  // meio da lista — por isso NÃO entra em "linhas". A ordem do resto
+  // segue o pedido: Matrícula/Transcrição, Contribuinte, Loteamento, e
+  // só então o que mais tiver (Área calculada, Documentos, Observações,
+  // qualquer outro campo cru) — cada linha só aparece se tiver valor,
+  // nunca em branco.
   function montarLinhasPainel(props, geometry) {
     const indice = indexarPropriedades(props);
     const consumidas = new Set();
     const linhas = [];
+
+    // Endereço: Tipo + Logradouro + nº (ex: "Rua Exemplo, 123") — vira
+    // o título do painel (ver abrirPainelFeature), não uma linha.
+    const tipo = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.tipoLogradouro);
+    const logradouro = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.logradouro);
+    const numeroEndereco = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.numeroEndereco);
+    const titulo = ([tipo, logradouro].filter(Boolean).join(" ").trim() + (numeroEndereco ? `, ${numeroEndereco}` : "")).trim();
+
+    // Número do Registro: Matrícula (prioridade) ou Transcrição.
+    const matricula = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.matricula);
+    const transcricao = matricula ? "" : pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.transcricao);
+    if (matricula) linhas.push({ label: "Matrícula", valor: matricula });
+    else if (transcricao) linhas.push({ label: "Transcrição", valor: transcricao });
 
     // Contribuinte = Setor + Quadra + Lote (ou já vem pronto num campo
     // próprio, ex: vindo direto do SQL) — mostrado como um só valor.
@@ -2210,6 +2264,9 @@
     const contribuinte = contribuinteDireto || [setor, quadra, lote].filter(Boolean).join(".");
     if (contribuinte) linhas.push({ label: "Contribuinte", valor: contribuinte });
 
+    const loteamento = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamento);
+    if (loteamento) linhas.push({ label: "Loteamento", valor: loteamento });
+
     // Área calculada na hora, a partir da própria geometria — não
     // depende de nenhum campo/atributo do banco (só entra pra
     // Polygon/MultiPolygon; ponto e linha não têm área).
@@ -2217,22 +2274,6 @@
     if (areaM2 !== null && areaM2 > 0) {
       linhas.push({ label: "Área (aprox.)", valor: formatarArea(areaM2) });
     }
-
-    // Número do Registro: Matrícula (prioridade) ou Transcrição.
-    const matricula = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.matricula);
-    const transcricao = matricula ? "" : pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.transcricao);
-    if (matricula) linhas.push({ label: "Matrícula", valor: matricula });
-    else if (transcricao) linhas.push({ label: "Transcrição", valor: transcricao });
-
-    // Endereço: Tipo + Logradouro + nº (ex: "Rua Exemplo, 123").
-    const tipo = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.tipoLogradouro);
-    const logradouro = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.logradouro);
-    const numeroEndereco = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.numeroEndereco);
-    const endereco = [tipo, logradouro].filter(Boolean).join(" ").trim() + (numeroEndereco ? `, ${numeroEndereco}` : "");
-    if (endereco.trim()) linhas.push({ label: "Endereço", valor: endereco.trim() });
-
-    const loteamento = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamento);
-    if (loteamento) linhas.push({ label: "Loteamento", valor: loteamento });
 
     // Documentos anexados ao loteamento — vira link clicável, não texto.
     const documentosBruto = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.documentos);
@@ -2252,7 +2293,7 @@
       linhas.push({ label: rotuloAmigavel(chave), valor });
     }
 
-    return linhas;
+    return { titulo, linhas };
   }
 
   function escapeHtml(str) {

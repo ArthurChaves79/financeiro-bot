@@ -31,7 +31,21 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+from . import geoutil as _geoutil_para_empacotar  # noqa: F401
 from .config import settings
+
+# O import "morto" acima (geoutil, sem uso direto aqui) é de propósito:
+# indexar_camadas.py e vincular_poligonos.py (importados mais abaixo)
+# fazem "from app.geoutil import centroide_aproximado", mas como eles
+# são carregados dinamicamente (via sys.path, não um "import" literal
+# que o PyInstaller consiga seguir), a análise estática do PyInstaller
+# nunca descobre sozinha que app/geoutil.py precisa ir no .exe — sem
+# isso ele falha em runtime com "ModuleNotFoundError: app.geoutil",
+# só ao tentar rodar uma tarefa do painel de Manutenção (não na
+# subida do programa, então passa despercebido até alguém usar o
+# painel). Um "import ... as _algo_para_empacotar" aqui, no arquivo
+# que o PyInstaller SEGUE de verdade (é importado por app/main.py),
+# força ele a empacotar o módulo mesmo sem uso direto.
 
 # Em modo normal, scripts/ é uma pasta irmã de app/ (backend/scripts).
 # No .exe empacotado (PyInstaller), ela é distribuída como dado

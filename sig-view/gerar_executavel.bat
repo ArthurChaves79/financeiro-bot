@@ -40,6 +40,7 @@ pyinstaller --noconfirm --onefile --windowed --name SigView ^
   --icon "..\assets\icon.ico" ^
   --add-data "..\frontend;frontend" ^
   --add-data "scripts;scripts" ^
+  --hidden-import app.geoutil ^
   --collect-submodules uvicorn ^
   --collect-all webview ^
   --collect-all clr_loader ^

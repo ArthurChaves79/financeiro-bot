@@ -30,17 +30,26 @@
         <p class="hint">Aponte o programa para os recursos da rede local. Salvar recarrega a página.</p>
 
         <label for="cfg-layers-dir">Pasta de camadas (GeoJSON)</label>
-        <input id="cfg-layers-dir" type="text" placeholder="\\servidor\sigview\layers" />
+        <div class="cfg-campo-caminho">
+          <input id="cfg-layers-dir" type="text" placeholder="\\servidor\sigview\layers" />
+          <button type="button" class="cfg-procurar-btn" data-alvo="cfg-layers-dir" data-tipo="pasta" title="Escolher pasta">📂</button>
+        </div>
 
         <label for="cfg-geocoder-db">Banco de busca (geocoder.db)</label>
-        <input id="cfg-geocoder-db" type="text" placeholder="\\servidor\sigview\geocoder.db" />
+        <div class="cfg-campo-caminho">
+          <input id="cfg-geocoder-db" type="text" placeholder="\\servidor\sigview\geocoder.db" />
+          <button type="button" class="cfg-procurar-btn" data-alvo="cfg-geocoder-db" data-tipo="arquivo" data-filtro="Banco SQLite (*.db)" title="Escolher arquivo">📂</button>
+        </div>
 
         <label for="cfg-mapa-select">Mapa</label>
         <select id="cfg-mapa-select"></select>
         <p class="hint">Coloque um ou mais arquivos <code>.mbtiles</code> na pasta <code>data\maps</code> (do lado do programa) pra eles aparecerem aqui pra escolher — sem precisar digitar caminho.</p>
 
         <label for="cfg-mbtiles" id="cfg-mbtiles-label" hidden>Caminho do mapa (.mbtiles)</label>
-        <input id="cfg-mbtiles" type="text" placeholder="C:\SIGView\data\mapa.mbtiles" hidden />
+        <div class="cfg-campo-caminho">
+          <input id="cfg-mbtiles" type="text" placeholder="C:\SIGView\data\mapa.mbtiles" hidden />
+          <button type="button" id="cfg-mbtiles-procurar" class="cfg-procurar-btn" data-alvo="cfg-mbtiles" data-tipo="arquivo" data-filtro="Mapa (*.mbtiles)" title="Escolher arquivo" hidden>📂</button>
+        </div>
 
         <label for="cfg-tile-url">URL do servidor de mapas (tiles)</label>
         <input id="cfg-tile-url" type="text" placeholder="/tiles/style.json" />
@@ -57,7 +66,10 @@
         <p class="hint">Só vale pro mapa embutido (vetorial) — usa o mesmo arquivo de mapa, só muda as cores.</p>
 
         <label for="cfg-versao-check">Verificar versão nova em (opcional)</label>
-        <input id="cfg-versao-check" type="text" placeholder="\\servidor\sigview\versao.txt" />
+        <div class="cfg-campo-caminho">
+          <input id="cfg-versao-check" type="text" placeholder="\\servidor\sigview\versao.txt" />
+          <button type="button" class="cfg-procurar-btn" data-alvo="cfg-versao-check" data-tipo="arquivo" data-filtro="Arquivo de versão (*.txt;*.json)" title="Escolher arquivo">📂</button>
+        </div>
         <p class="hint">Arquivo numa pasta de rede com o número da versão mais nova disponível (peça pro TI deixar isso pronto). Deixe em branco pra não checar nada.</p>
 
         <p id="settings-error" class="error" hidden></p>

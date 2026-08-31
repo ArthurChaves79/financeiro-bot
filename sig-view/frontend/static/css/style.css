@@ -549,6 +549,40 @@ html, body {
   color: #f66;
 }
 
+/* Campo de caminho (pasta/arquivo) + botão "📂 Procurar" nativo — ver
+   JsApi.escolher_pasta/escolher_arquivo (run.py). O botão some sozinho
+   quando o programa abre no navegador comum (sem pywebview), já que
+   nesse modo não tem como abrir um diálogo nativo do Windows. */
+.cfg-campo-caminho {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.cfg-campo-caminho input {
+  flex: 1;
+  min-width: 0; /* sem isso, o input não encolhe e empurra o botão pra fora do painel */
+}
+
+.cfg-procurar-btn {
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.cfg-procurar-btn:hover {
+  border-color: var(--accent);
+}
+
+.cfg-procurar-btn[hidden] {
+  display: none;
+}
+
 .settings-actions {
   display: flex;
   justify-content: flex-end;

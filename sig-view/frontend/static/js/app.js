@@ -1592,6 +1592,7 @@
     const mapaSelect = document.getElementById("cfg-mapa-select");
     const mbtilesLabel = document.getElementById("cfg-mbtiles-label");
     const mbtilesInput = fields.mbtiles_path;
+    const mbtilesProcurarBtn = document.getElementById("cfg-mbtiles-procurar");
     const VALOR_PERSONALIZADO = "__personalizado__";
 
     // O <select> é só um jeito mais fácil de escolher entre os
@@ -1601,6 +1602,51 @@
     function mostrarCampoPersonalizado(mostrar) {
       mbtilesLabel.hidden = !mostrar;
       mbtilesInput.hidden = !mostrar;
+      mbtilesProcurarBtn.hidden = !mostrar || !temPywebviewApi();
+    }
+
+    // Diálogo nativo "Escolher pasta/arquivo" (ver JsApi.escolher_pasta/
+    // escolher_arquivo em run.py) — só existe na janela própria do
+    // programa (pywebview), não dá pra abrir um diálogo do Windois
+    // rodando num navegador comum. Os botões "📂" somem sozinhos nesse
+    // caso, sobrando só o campo de texto (jeito de sempre, colar/digitar).
+    function temPywebviewApi() {
+      return !!(window.pywebview && window.pywebview.api && window.pywebview.api.escolher_pasta);
+    }
+
+    function atualizarVisibilidadeBotoesProcurar() {
+      const disponivel = temPywebviewApi();
+      for (const el of document.querySelectorAll(".cfg-procurar-btn")) {
+        // O de mbtiles também depende do dropdown estar em "Personalizado" — mostrarCampoPersonalizado cuida dele.
+        if (el === mbtilesProcurarBtn) continue;
+        el.hidden = !disponivel;
+      }
+      mbtilesProcurarBtn.hidden = mbtilesInput.hidden || !disponivel;
+    }
+    atualizarVisibilidadeBotoesProcurar();
+    // window.pywebview pode não estar pronto ainda no instante em que a
+    // página carrega — o próprio pywebview dispara esse evento quando a
+    // ponte fica disponível, pra reconferir nesse momento.
+    window.addEventListener("pywebviewready", atualizarVisibilidadeBotoesProcurar);
+
+    for (const el of document.querySelectorAll(".cfg-procurar-btn")) {
+      el.addEventListener("click", async () => {
+        const alvo = document.getElementById(el.dataset.alvo);
+        if (!alvo) return;
+        let escolhido = null;
+        try {
+          if (el.dataset.tipo === "pasta") {
+            escolhido = await window.pywebview.api.escolher_pasta();
+          } else {
+            const filtro = el.dataset.filtro ? [el.dataset.filtro, "Todos os arquivos (*.*)"] : null;
+            escolhido = await window.pywebview.api.escolher_arquivo(filtro);
+          }
+        } catch (err) {
+          showError(`Não foi possível abrir o seletor: ${err.message}`);
+          return;
+        }
+        if (escolhido) alvo.value = escolhido;
+      });
     }
 
     mapaSelect.addEventListener("change", () => {

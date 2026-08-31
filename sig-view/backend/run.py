@@ -104,6 +104,32 @@ class JsApi:
             return {"ok": False, "erro": str(exc)}
         return {"ok": True, "caminho": destino}
 
+    def escolher_pasta(self) -> str | None:
+        """Abre o diálogo nativo "Selecionar pasta" — usado em ⚙
+        Configurações pros campos de caminho de pasta (ex: Pasta de
+        camadas), pra não precisar digitar/colar o caminho na mão."""
+        import webview
+
+        janela = webview.windows[0]
+        resultado = janela.create_file_dialog(webview.FOLDER_DIALOG)
+        if not resultado:
+            return None
+        return resultado if isinstance(resultado, str) else resultado[0]
+
+    def escolher_arquivo(self, file_types: list[str] | None = None) -> str | None:
+        """Abre o diálogo nativo "Abrir arquivo" — usado em ⚙
+        Configurações pros campos de caminho de arquivo (ex: geocoder.db,
+        .mbtiles). `file_types` segue o mesmo formato do pywebview, ex:
+        ["Banco SQLite (*.db)", "Todos os arquivos (*.*)"]."""
+        import webview
+
+        janela = webview.windows[0]
+        tipos = tuple(file_types) if file_types else ()
+        resultado = janela.create_file_dialog(webview.OPEN_DIALOG, file_types=tipos)
+        if not resultado:
+            return None
+        return resultado if isinstance(resultado, str) else resultado[0]
+
 
 def main() -> None:
     server_thread = threading.Thread(target=_run_server, daemon=True)

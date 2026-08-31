@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -107,6 +108,25 @@ def api_get_layer(layer_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Camada '{layer_id}' não encontrada") from exc
     except layers_module.LayerReadError as exc:
         raise HTTPException(status_code=422, detail=f"Erro ao ler a camada '{layer_id}': {exc}") from exc
+
+
+@app.get("/api/arquivo-local")
+def api_arquivo_local(caminho: str = Query(..., min_length=1)) -> FileResponse:
+    """Serve o conteúdo de um arquivo local (foto anexada a um imóvel
+    etc., ver o campo "Documentos" na barra de detalhes) pro próprio
+    navegador embutido conseguir exibir — ex: <img src="/api/arquivo-
+    local?caminho=...">. Sem isso, um <img>/<a> apontando direto pra um
+    caminho local (C:\\... ou \\\\servidor\\...) não carrega: a página é
+    servida a partir de http://localhost, e navegadores bloqueiam
+    referenciar um arquivo local a partir de uma origem http/https por
+    segurança ("Not allowed to load local resource"). Isso não é uma
+    brecha de segurança adicional pro tipo de instalação do SIG View
+    (roda só localmente, o caminho vem de um GeoJSON que a própria
+    empresa controla, não de um usuário remoto)."""
+    caminho_arquivo = Path(caminho)
+    if not caminho_arquivo.is_file():
+        raise HTTPException(status_code=404, detail=f"Arquivo não encontrado: {caminho}")
+    return FileResponse(caminho_arquivo)
 
 
 @app.get("/api/settings")

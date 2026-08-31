@@ -163,6 +163,16 @@
     </div>
   </div>
 
+  <!-- Visualizador de imagem embutido (fotos anexadas a um imóvel, ver
+       o campo "Documentos" na barra de detalhes) — abre a imagem
+       dentro do próprio programa, sem depender de qual visualizador
+       está associado a .jpg/.png em cada computador. Ver
+       abrirImagemNoApp() em app.js. -->
+  <div id="image-lightbox" hidden>
+    <button id="image-lightbox-close" type="button" aria-label="Fechar" title="Fechar">×</button>
+    <img id="image-lightbox-img" alt="" />
+  </div>
+
   <!-- Área usada só na hora de imprimir (ex: lista de Confrontantes) —
        fica vazia e escondida na tela; o CSS de impressão (style.css)
        esconde o resto de #app e mostra só isso, pra imprimir uma folha

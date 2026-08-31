@@ -1150,3 +1150,47 @@ html, body {
     background: #eee;
   }
 }
+
+/* Visualizador de imagem embutido (ver #image-lightbox no index.html
+   e abrirImagemNoApp() em app.js). */
+#image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+
+#image-lightbox[hidden] {
+  display: none;
+}
+
+#image-lightbox-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  cursor: default;
+}
+
+#image-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+#image-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}

@@ -2136,29 +2136,80 @@
   // amigável — o resto das propriedades continua aparecendo depois,
   // igual antes. Campos sem valor simplesmente não aparecem.
 
+  // Imagem (foto anexada a um imóvel) reconhecida pela extensão —
+  // essas abrem DENTRO do programa (ver abrirImagemNoApp), sem
+  // depender de qual visualizador está associado a .jpg/.png em cada
+  // um dos computadores. Qualquer outra extensão (PDF, planilha etc.)
+  // continua abrindo no programa padrão do Windows.
+  const _EXTENSOES_IMAGEM = new Set(["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"]);
+
+  function _ehImagem(caminho) {
+    const ext = caminho.split(".").pop().toLowerCase();
+    return _EXTENSOES_IMAGEM.has(ext);
+  }
+
+  // Abre uma foto local dentro do próprio programa (visualizador
+  // simples, tela cheia escurecida). Passa pelo backend (GET /api/
+  // arquivo-local) em vez de um <img src="C:\..."> direto — a página
+  // é servida por http://localhost, e navegadores bloqueiam carregar
+  // um arquivo local a partir de uma origem http/https por segurança
+  // ("Not allowed to load local resource"); o endpoint só lê o
+  // arquivo do disco e devolve os bytes, contornando isso. Funciona
+  // tanto na janela própria (pywebview) quanto no modo navegador
+  // comum — não depende de nenhuma ponte nativa.
+  function abrirImagemNoApp(caminho) {
+    const lightbox = document.getElementById("image-lightbox");
+    const img = document.getElementById("image-lightbox-img");
+    img.src = `/api/arquivo-local?caminho=${encodeURIComponent(caminho)}`;
+    img.alt = nomeArquivoDoCaminho(caminho);
+    lightbox.hidden = false;
+  }
+
+  function fecharImagemNoApp() {
+    const lightbox = document.getElementById("image-lightbox");
+    const img = document.getElementById("image-lightbox-img");
+    lightbox.hidden = true;
+    img.src = ""; // solta o download/memória da imagem enquanto fechado
+  }
+
   function setupFeaturePanel() {
     const closeBtn = document.getElementById("feature-panel-close");
     closeBtn.addEventListener("click", fecharPainelFeature);
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") fecharPainelFeature();
+
+    const lightbox = document.getElementById("image-lightbox");
+    document.getElementById("image-lightbox-close").addEventListener("click", fecharImagemNoApp);
+    lightbox.addEventListener("click", (e) => {
+      if (e.target === lightbox) fecharImagemNoApp(); // clicou no fundo escuro, não na imagem
     });
 
-    // Links de "Documentos" (fotos, PDFs etc. — ver renderLinhaPainel)
-    // que apontam pra um caminho local (não http/https) abrem pelo
-    // programa padrão do Windows daquele tipo de arquivo, em vez de um
-    // <a href> comum — que não funciona pra caminho de arquivo local
-    // de dentro da janela do programa (é uma página servida por
-    // http://localhost, navegar pra um caminho local a partir dali é
-    // bloqueado por segurança do próprio navegador). Delegado no body
-    // do painel (não em cada link) porque o conteúdo é recriado via
-    // innerHTML toda vez que abre uma feature.
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (!lightbox.hidden) fecharImagemNoApp();
+      else fecharPainelFeature();
+    });
+
+    // Links de "Documentos" (fotos, PDFs etc. — ver renderLinhaPainel).
+    // Delegado no body do painel (não em cada link) porque o conteúdo
+    // é recriado via innerHTML toda vez que abre uma feature.
     document.getElementById("feature-panel-body").addEventListener("click", (e) => {
       const link = e.target.closest("a[data-caminho]");
       if (!link) return;
       const caminho = link.dataset.caminho;
-      if (/^https?:\/\//i.test(caminho) || !window.pywebview?.api?.abrir_arquivo_local) {
-        return; // URL de verdade, ou sem a ponte nativa (modo navegador) — deixa o <a> normal cuidar
+      if (/^https?:\/\//i.test(caminho)) return; // URL de verdade — deixa o <a> normal cuidar
+
+      if (_ehImagem(caminho)) {
+        e.preventDefault();
+        abrirImagemNoApp(caminho);
+        return;
       }
+
+      // Qualquer outro tipo de arquivo local (PDF, planilha etc.) abre
+      // no programa padrão do Windows — um <a href> comum não funciona
+      // pra caminho local de dentro da janela do programa (mesmo
+      // motivo do bloqueio de imagem acima), por isso passa pela ponte
+      // nativa; sem ela (modo navegador comum), deixa o <a> tentar
+      // mesmo, não tem alternativa melhor nesse modo.
+      if (!window.pywebview?.api?.abrir_arquivo_local) return;
       e.preventDefault();
       window.pywebview.api.abrir_arquivo_local(caminho).then((resultado) => {
         if (!resultado.ok) alert(`Não foi possível abrir o arquivo: ${resultado.erro || "erro desconhecido"}`);

@@ -163,6 +163,13 @@
     </div>
   </div>
 
+  <!-- Área usada só na hora de imprimir (ex: lista de Confrontantes) —
+       fica vazia e escondida na tela; o CSS de impressão (style.css)
+       esconde o resto de #app e mostra só isso, pra imprimir uma folha
+       limpa em vez do mapa/app inteiro. Ver imprimirConfrontantes() em
+       app.js. -->
+  <div id="print-area"></div>
+
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="static/js/app.js"></script>
 </body>

@@ -1107,3 +1107,46 @@ html, body {
   cursor: pointer;
   padding: 0 4px;
 }
+
+/* Área de impressão (ver imprimirConfrontantes() em app.js) — some na
+   tela, e na hora de imprimir vira a ÚNICA coisa visível (o #app
+   inteiro — mapa, painéis — some), pra sair uma folha limpa com só a
+   tabela, em vez do app inteiro (que nem faz sentido impresso: mapa é
+   canvas, painéis são posicionados fixos etc.). */
+#print-area {
+  display: none;
+}
+
+@media print {
+  #app {
+    display: none !important;
+  }
+  #print-area {
+    display: block;
+    color: #111;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  #print-area h1 {
+    font-size: 16px;
+    margin: 0 0 4px;
+  }
+  #print-area p.print-sub {
+    font-size: 12px;
+    color: #555;
+    margin: 0 0 20px;
+  }
+  #print-area table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  #print-area th,
+  #print-area td {
+    border: 1px solid #999;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  #print-area th {
+    background: #eee;
+  }
+}

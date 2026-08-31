@@ -1498,12 +1498,15 @@
 
     // Imprime de verdade (abre a seleção de impressora do Windows) —
     // diferente do "🖨 Imprimir" do topo (que salva uma imagem do
-    // mapa), aqui é uma tabela de texto simples. window.pywebview.api.
-    // salvar_texto abriria "Salvar como" em vez de imprimir — não serve
-    // pra esse caso, por isso usa window.print() (suportado direto
-    // pelo WebView2, sem precisar de nenhuma ponte com o Python) numa
-    // página à parte, num <iframe> escondido, pra não tentar imprimir o
-    // mapa/app inteiro por trás.
+    // mapa), aqui é uma tabela de texto simples.
+    //
+    // Primeira versão disso usava um <iframe> escondido com
+    // iframe.contentWindow.print() — mas impressão de sub-frame não é
+    // confiável dentro do WebView2 (o usuário reportou a tabela saindo
+    // em branco). Troca: enche #print-area (na PRÓPRIA página, ver
+    // index.html) com a tabela e chama window.print() direto; o CSS de
+    // impressão (style.css, @media print) esconde o resto do app nesse
+    // momento, então só a tabela sai na folha.
     function imprimirConfrontantes() {
       if (!ultimosEncontrados.length) return;
 
@@ -1519,41 +1522,28 @@
         })
         .join("");
 
-      const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Confrontantes</title>
-<style>
-  body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #111; }
-  h1 { font-size: 16px; margin: 0 0 4px; }
-  p.sub { font-size: 12px; color: #555; margin: 0 0 20px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
-  th { background: #eee; }
-</style>
-</head><body>
-  <h1>Confrontantes${origem ? ` — ${escapeHtml(origem)}` : ""}</h1>
-  <p class="sub">Gerado pelo SIG View em ${new Date().toLocaleString("pt-BR")}</p>
-  <table>
-    <thead><tr><th>Endereço</th><th>Nº de Registro</th><th>Distância</th></tr></thead>
-    <tbody>${linhasHtml}</tbody>
-  </table>
-</body></html>`;
+      const printAreaEl = document.getElementById("print-area");
+      printAreaEl.innerHTML = `
+        <h1>Confrontantes${origem ? ` — ${escapeHtml(origem)}` : ""}</h1>
+        <p class="print-sub">Gerado pelo SIG View em ${new Date().toLocaleString("pt-BR")}</p>
+        <table>
+          <thead><tr><th>Endereço</th><th>Nº de Registro</th><th>Distância</th></tr></thead>
+          <tbody>${linhasHtml}</tbody>
+        </table>
+      `;
 
-      const iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
-      iframe.addEventListener("load", () => {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-      });
-      document.body.appendChild(iframe);
-      iframe.srcdoc = html;
-
-      // Não tem como saber com certeza quando a pessoa fechou a janela
-      // de impressão (varia por navegador) — "afterprint" cobre a
-      // maioria dos casos, e o setTimeout é só uma rede de segurança
-      // pra não deixar o iframe escondido acumulando pra sempre.
-      const remover = () => iframe.remove();
-      iframe.contentWindow?.addEventListener?.("afterprint", remover);
-      setTimeout(remover, 60000);
+      window.print();
+      // Esvazia SÓ depois que a impressão terminar (evento "afterprint")
+      // — limpar logo depois do print() é arriscado: no Chromium/
+      // WebView2 window.print() não bloqueia o script (ao contrário do
+      // Firefox), então limpar synchronamente podia apagar a tabela
+      // ANTES da pré-visualização de impressão terminar de capturar o
+      // conteúdo, voltando a sair em branco (era basicamente esse o
+      // problema com a versão anterior, via <iframe>). Não precisa
+      // limpar antes de nada — #print-area só aparece na hora de
+      // imprimir mesmo (@media print em style.css), fica invisível na
+      // tela o resto do tempo.
+      window.addEventListener("afterprint", () => { printAreaEl.innerHTML = ""; }, { once: true });
     }
 
     function executarBusca() {

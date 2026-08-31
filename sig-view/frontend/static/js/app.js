@@ -535,6 +535,15 @@
       paint: { "circle-radius": 6, "circle-color": corPonto, "circle-stroke-color": "#fff", "circle-stroke-width": 1.5 },
     });
 
+    // As camadas de destaque (Confrontantes, resultado de busca, régua
+    // de medir) são criadas uma vez só, na abertura do mapa — sem isso,
+    // qualquer camada de imóvel ligada DEPOIS entraria por cima delas
+    // (MapLibre desenha na ordem em que cada addLayer foi chamado), e o
+    // contorno de destaque ficava escondido atrás do preenchimento do
+    // polígono. Toda vez que uma camada nova entra, traz o destaque de
+    // volta pro topo.
+    trazerCamadasDeSobreposicaoParaFrente();
+
     // Clique em qualquer tipo de geometria (ponto, linha ou polígono)
     // abre a barra lateral de detalhes com todos os atributos da feature.
     for (const id of [fillId, lineId, pointId]) {
@@ -1267,6 +1276,18 @@
     state.map.getSource(BUSCA_DESTAQUE_SOURCE_ID)?.setData({ type: "FeatureCollection", features: [] });
   }
 
+  // Reordena as camadas de "overlay" (que não são dado de imóvel, são
+  // ferramentas do próprio programa) pro topo do mapa, na ordem abaixo
+  // — a última chamada de moveLayer fica por cima de tudo. Chamada
+  // toda vez que uma camada de imóvel é ligada (ver toggleLayer),
+  // porque o MapLibre sempre desenha uma camada nova adicionada por
+  // cima das que já existiam.
+  function trazerCamadasDeSobreposicaoParaFrente() {
+    for (const id of [CONFRONTANTES_DESTAQUE_LAYER_ID, BUSCA_DESTAQUE_LAYER_ID, MEASURE_LINE_ID, MEASURE_PONTOS_ID]) {
+      if (state.map.getLayer(id)) state.map.moveLayer(id); // sem 2º argumento: vai pro topo
+    }
+  }
+
   // Acha, dentro do GeoJSON de uma camada já carregada, a feature cujo
   // centroide (mesmo cálculo — média dos vértices — usado tanto aqui
   // quanto em app/geoutil.py na hora de indexar) mais se aproxima do
@@ -1398,6 +1419,7 @@
     const hintEl = document.getElementById("neighbors-hint");
     const listEl = document.getElementById("neighbors-list");
     const exportarBtn = document.getElementById("neighbors-exportar");
+    const imprimirBtn = document.getElementById("neighbors-imprimir");
 
     let poligonoSelecionado = null; // { feature, info } — o lote clicado, base da comparação
     let ultimosEncontrados = []; // guardado pra "Exportar CSV" sem precisar buscar de novo
@@ -1405,6 +1427,7 @@
     function renderLista(encontrados) {
       ultimosEncontrados = encontrados;
       exportarBtn.disabled = encontrados.length === 0;
+      imprimirBtn.disabled = encontrados.length === 0;
 
       listEl.innerHTML = "";
       if (!encontrados.length) {
@@ -1473,6 +1496,66 @@
       link.remove();
     }
 
+    // Imprime de verdade (abre a seleção de impressora do Windows) —
+    // diferente do "🖨 Imprimir" do topo (que salva uma imagem do
+    // mapa), aqui é uma tabela de texto simples. window.pywebview.api.
+    // salvar_texto abriria "Salvar como" em vez de imprimir — não serve
+    // pra esse caso, por isso usa window.print() (suportado direto
+    // pelo WebView2, sem precisar de nenhuma ponte com o Python) numa
+    // página à parte, num <iframe> escondido, pra não tentar imprimir o
+    // mapa/app inteiro por trás.
+    function imprimirConfrontantes() {
+      if (!ultimosEncontrados.length) return;
+
+      const origemProps = (poligonoSelecionado && poligonoSelecionado.feature.properties) || {};
+      const origem = _enderecoResumo(origemProps) || origemProps.nome || (poligonoSelecionado && poligonoSelecionado.info.titulo) || "";
+
+      const linhasHtml = ultimosEncontrados
+        .map(({ info, feature, distancia }) => {
+          const props = feature.properties || {};
+          const endereco = _enderecoResumo(props) || props.nome || info.titulo;
+          const registro = _registroResumo(props) || "—";
+          return `<tr><td>${escapeHtml(endereco)}</td><td>${escapeHtml(registro)}</td><td>${distancia.toFixed(1)} m</td></tr>`;
+        })
+        .join("");
+
+      const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Confrontantes</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #111; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p.sub { font-size: 12px; color: #555; margin: 0 0 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
+  th { background: #eee; }
+</style>
+</head><body>
+  <h1>Confrontantes${origem ? ` — ${escapeHtml(origem)}` : ""}</h1>
+  <p class="sub">Gerado pelo SIG View em ${new Date().toLocaleString("pt-BR")}</p>
+  <table>
+    <thead><tr><th>Endereço</th><th>Nº de Registro</th><th>Distância</th></tr></thead>
+    <tbody>${linhasHtml}</tbody>
+  </table>
+</body></html>`;
+
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+      iframe.addEventListener("load", () => {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      });
+      document.body.appendChild(iframe);
+      iframe.srcdoc = html;
+
+      // Não tem como saber com certeza quando a pessoa fechou a janela
+      // de impressão (varia por navegador) — "afterprint" cobre a
+      // maioria dos casos, e o setTimeout é só uma rede de segurança
+      // pra não deixar o iframe escondido acumulando pra sempre.
+      const remover = () => iframe.remove();
+      iframe.contentWindow?.addEventListener?.("afterprint", remover);
+      setTimeout(remover, 60000);
+    }
+
     function executarBusca() {
       if (!poligonoSelecionado) return;
       const tolerancia = Math.max(0, Number(toleranciaInput.value) || 0);
@@ -1525,6 +1608,7 @@
       poligonoSelecionado = null;
       ultimosEncontrados = [];
       exportarBtn.disabled = true;
+      imprimirBtn.disabled = true;
       hintEl.hidden = false;
       listEl.innerHTML = "";
     }
@@ -1540,6 +1624,7 @@
     closeBtn.addEventListener("click", desativar);
     buscarBtn.addEventListener("click", executarBusca);
     exportarBtn.addEventListener("click", exportarCsv);
+    imprimirBtn.addEventListener("click", imprimirConfrontantes);
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && state.buscandoVizinhos) desativar();

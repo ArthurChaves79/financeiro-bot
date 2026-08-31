@@ -887,13 +887,16 @@ html, body {
 }
 
 #neighbors-panel-footer {
+  display: flex;
+  gap: 8px;
   padding: 8px 12px;
   border-top: 1px solid var(--panel-border);
   flex-shrink: 0;
 }
 
+#neighbors-imprimir,
 #neighbors-exportar {
-  width: 100%;
+  flex: 1;
   padding: 7px 10px;
   border-radius: 6px;
   border: 1px solid var(--panel-border);
@@ -903,10 +906,12 @@ html, body {
   cursor: pointer;
 }
 
+#neighbors-imprimir:hover:not(:disabled),
 #neighbors-exportar:hover:not(:disabled) {
   border-color: var(--accent);
 }
 
+#neighbors-imprimir:disabled,
 #neighbors-exportar:disabled {
   opacity: 0.5;
   cursor: default;

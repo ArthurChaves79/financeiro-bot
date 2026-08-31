@@ -2282,9 +2282,23 @@
     logradouro: ["logradouro", "rua", "nomelogradouro"],
     numeroEndereco: ["numeroendereco", "nendereco", "numero", "num"],
     loteamento: ["loteamento", "nomeloteamento"],
-    documentos: ["documentos", "documento", "anexos", "anexo", "linkdocumentos", "urldocumentos", "arquivos", "arquivo"],
+    documentos: [
+      "documentos", "documento", "anexos", "anexo", "linkdocumentos", "urldocumentos", "arquivos", "arquivo",
+      "foto", "fotos", "imagem", "imagens", "link", "links", "url", "midia", "midias",
+    ],
     observacoes: ["observacoes", "observacao", "obs"],
   };
+
+  // Propriedades usadas só pra colorir o polígono/linha/ponto no mapa
+  // (ver corComFallback em toggleLayer) — não são informação pra
+  // exibir na barra de detalhes, então nunca entram na lista de
+  // "qualquer outra propriedade" lá embaixo. As com "_" na frente (ex:
+  // "_cor_preenchimento", vindas de KML) já eram ignoradas antes disso
+  // existir; essas aqui são as versões sem "_" (ex: um "cor" que o
+  // próprio usuário colocou no GeoJSON).
+  const CAMPOS_DE_COR_IGNORADOS = new Set(
+    ["fill", "cor", "fill-opacity", "stroke", "stroke-width", "marker-color"].map(normalizarChave)
+  );
 
   function normalizarChave(k) {
     return k
@@ -2358,8 +2372,32 @@
   // Um campo de "documentos" pode ter mais de um caminho/link, separados
   // por vírgula/ponto-e-vírgula/quebra de linha.
   function extrairDocumentos(bruto) {
-    const partes = bruto.split(/[;\n]+/).map((s) => s.trim()).filter(Boolean);
+    const partes = bruto.split(/[;,\n]+/).map((s) => s.trim()).filter(Boolean);
     return partes.length ? partes : [bruto];
+  }
+
+  // Acha o campo de documentos (ver CAMPOS_CONHECIDOS.documentos) e
+  // devolve a lista de caminhos/links já separados. Trata a propriedade
+  // já vindo como LISTA (ex: "fotos": ["a.jpg", "b.jpg"] — mesmo
+  // padrão de "enderecos"/"transcricoes" já visto nos dados reais)
+  // separado de uma string única com vários caminhos juntos — se
+  // passasse pelo formatarValorPropriedade genérico primeiro, uma
+  // lista virava só um texto "a.jpg, b.jpg" juntado por vírgula, e
+  // extrairDocumentos não tinha como saber se essa vírgula era um
+  // separador de documento ou parte de um caminho só.
+  function obterDocumentos(props, indice, consumidas) {
+    for (const candidato of CAMPOS_CONHECIDOS.documentos) {
+      const chaveOriginal = indice.get(candidato);
+      if (chaveOriginal === undefined) continue;
+      consumidas.add(chaveOriginal);
+      const bruto = props[chaveOriginal];
+      if (Array.isArray(bruto)) {
+        return bruto.map((v) => formatarValorPropriedade(v)).filter(Boolean);
+      }
+      const texto = formatarValorPropriedade(bruto);
+      return texto ? extrairDocumentos(texto) : [];
+    }
+    return [];
   }
 
   function nomeArquivoDoCaminho(caminho) {
@@ -2491,10 +2529,13 @@
       linhas.push({ label: "Área (aprox.)", valor: formatarArea(areaM2) });
     }
 
-    // Documentos anexados ao loteamento — vira link clicável, não texto.
-    const documentosBruto = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.documentos);
-    if (documentosBruto) {
-      linhas.push({ label: "Documentos", documentos: extrairDocumentos(documentosBruto) });
+    // Documentos anexados (fotos, PDFs etc.) — vira link clicável, não
+    // texto. obterDocumentos() trata o caso de a propriedade já vir
+    // como lista (mais de um documento) separado da hora de tratar uma
+    // string única com vários caminhos juntos (ver a função).
+    const documentos = obterDocumentos(props, indice, consumidas);
+    if (documentos.length) {
+      linhas.push({ label: "Documentos", documentos });
     }
 
     const observacoes = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.observacoes);
@@ -2502,8 +2543,11 @@
 
     // Qualquer outra propriedade que a feature tiver, não coberta pelos
     // campos conhecidos acima, ainda aparece — só depois, no final.
+    // Exceto as de cor (CAMPOS_DE_COR_IGNORADOS) — servem só pra pintar
+    // o polígono no mapa, não são informação pra mostrar aqui.
     for (const [chave, valorOriginal] of Object.entries(props)) {
       if (chave.startsWith("_") || consumidas.has(chave)) continue;
+      if (CAMPOS_DE_COR_IGNORADOS.has(normalizarChave(chave))) continue;
       const valor = formatarValorPropriedade(valorOriginal);
       if (!valor) continue;
       linhas.push({ label: rotuloAmigavel(chave), valor });

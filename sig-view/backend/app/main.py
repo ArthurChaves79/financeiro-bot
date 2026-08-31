@@ -46,6 +46,24 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
+@app.middleware("http")
+async def _sem_cache_persistente(request: Request, call_next):
+    """A janela do programa (pywebview/WebView2) guarda um perfil de
+    navegador que persiste NO DISCO entre uma abertura e outra — e o
+    endereço do JS/CSS/HTML (ex: /static/js/app.js) é sempre o mesmo,
+    não muda a cada nova versão do .exe. Sem isso, depois de gerar um
+    .exe novo com uma correção, o programa podia continuar rodando o
+    JavaScript ANTIGO (cacheado de uma execução anterior), fazendo a
+    correção parecer que "não pegou" mesmo com o .exe certo instalado.
+    Câmeras/tiles (/tiles, /fonts) ficam de fora de propósito — são
+    conteúdo binário, mais pesado, e não mudam de uma hora pra outra
+    dentro da mesma sessão, então cachear ajuda sem esse risco."""
+    response = await call_next(request)
+    if not (request.url.path.startswith("/tiles") or request.url.path.startswith("/fonts")):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.get("/api/config")
 def get_config() -> dict:
     return {

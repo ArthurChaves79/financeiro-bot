@@ -86,8 +86,10 @@ def _tarefas_catalogo() -> dict[str, dict[str, Any]]:
                 "Varre a pasta de camadas (e subpastas) e recoloca, no "
                 "índice de busca, os atributos de cada .geojson/.kml/"
                 ".kmz encontrado — pra buscar por Setor-Quadra-Lote, "
-                "Matrícula, Transcrição etc. na caixa de busca do mapa. "
-                "Rode depois de adicionar ou atualizar camadas na pasta."
+                "Matrícula, Transcrição, número do contribuinte etc. na "
+                "caixa de busca do mapa (e já mostrar o lote encontrado, "
+                "não só um marcador solto). Rode depois de adicionar ou "
+                "atualizar camadas na pasta."
             ),
             "campos": [
                 _campo("pasta", "Pasta de camadas", padrao=str(settings.layers_dir)),
@@ -95,7 +97,11 @@ def _tarefas_catalogo() -> dict[str, dict[str, Any]]:
                 _campo("tipo", "Tipo", obrigatorio=False, padrao="imovel"),
                 _campo(
                     "rotulo", "Campos pesquisáveis (rótulo)", lista=True,
-                    ajuda="Nomes das propriedades da feature, separados por vírgula (ex: setor, quadra, lote, matricula, transcricao).",
+                    ajuda=(
+                        "Nomes das propriedades da feature, separados por vírgula (ex: numero_contribuinte, "
+                        "setor, quadra, lote, matricula, transcricao). Inclua numero_contribuinte aqui pra "
+                        "poder buscar um imóvel pelo número do contribuinte."
+                    ),
                 ),
                 _campo("logradouro", "Campo de endereço", obrigatorio=False, ajuda="Nome da propriedade com o endereço, se tiver."),
                 _campo("bairro", "Campo de bairro", obrigatorio=False),

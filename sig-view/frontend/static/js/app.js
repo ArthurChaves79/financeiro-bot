@@ -27,6 +27,7 @@
     pontosMedicao: [], // [[lon, lat], ...] marcados enquanto mede
     buscandoVizinhos: false, // true enquanto a ferramenta "🎯 Vizinhos" está ativa
     geojsonPorCamada: new Map(), // layerId -> {geojson, titulo, cor} das camadas ligadas — pra buscar vizinhos sem rebuscar no servidor
+    camadasPorId: new Map(), // layerId -> objeto "camada" (do painel de Camadas) — pra ligar uma camada a partir de um resultado de busca, sem depender do checkbox
   };
 
   async function fetchJSON(url) {
@@ -91,6 +92,7 @@
       );
       criarCamadasDeMedicao();
       criarCamadaDeDestaqueConfrontantes();
+      criarCamadaDeDestaqueBusca();
       await loadLayersPanel();
     });
     setupSearch();
@@ -309,6 +311,7 @@
 
     if (no.camada) {
       const camada = no.camada;
+      state.camadasPorId.set(camada.id, camada);
       checkbox.dataset.leaf = "true";
       checkbox.id = `layer-${camada.id}`;
 
@@ -704,12 +707,30 @@
       resultsEl.hidden = true;
     }
 
-    function selectResult(result) {
+    async function selectResult(result) {
       hideResults();
       salvarNoHistorico(result);
       input.value = result.label;
+      limparDestaqueDeBusca();
+      if (state.marker) {
+        state.marker.remove();
+        state.marker = null;
+      }
+
+      // Resultado veio de uma camada vinculada (ex: um imóvel indexado
+      // por número de contribuinte, matrícula, setor-quadra-lote etc.)
+      // — em vez de só deixar um marcador solto no centro aproximado,
+      // mostra o próprio lote: liga a camada (se ainda não estiver),
+      // acha a feature de verdade e abre a barra de detalhes dela.
+      if (result.layer_id) {
+        const mostrou = await mostrarFeatureDeResultado(result);
+        if (mostrou) return;
+        // Não achou a feature exata (índice desatualizado, camada sem
+        // esse registro etc.) — cai pro marcador simples abaixo, pra
+        // pelo menos mostrar onde é.
+      }
+
       state.map.flyTo({ center: [result.lon, result.lat], zoom: 17 });
-      if (state.marker) state.marker.remove();
       const entradasResultado = [
         ["Tipo", result.tipo],
         ["Logradouro", result.logradouro],
@@ -722,16 +743,42 @@
         .setLngLat([result.lon, result.lat])
         .setPopup(new maplibregl.Popup({ maxWidth: "320px" }).setHTML(buildPopupHtml(result.label, "#3fa9f5", entradasResultado)))
         .addTo(state.map);
+    }
 
-      // Resultado veio de uma camada vinculada (ex: um imóvel) — liga a
-      // camada automaticamente, senão o polígono não aparece no mapa.
-      if (result.layer_id) {
-        const checkbox = document.getElementById(`layer-${result.layer_id}`);
-        if (checkbox && !checkbox.checked) {
-          checkbox.checked = true;
-          checkbox.dispatchEvent(new Event("change"));
-        }
+    // Liga a camada do resultado (se preciso) e localiza a feature
+    // exata dentro dela (por centroide — ver encontrarFeaturePorCentroide)
+    // pra destacar o contorno, enquadrar o mapa nela e abrir a barra de
+    // detalhes com os atributos de verdade (não só os campos indexados
+    // na busca). Devolve false se não achou (chamador cai pro marcador
+    // simples nesse caso).
+    async function mostrarFeatureDeResultado(result) {
+      const layerId = result.layer_id;
+      if (!state.geojsonPorCamada.has(layerId)) {
+        const camada = state.camadasPorId.get(layerId);
+        if (!camada) return false; // painel de Camadas ainda não carregou — nada a fazer
+        const checkbox = document.getElementById(`layer-${layerId}`);
+        // autoFit=false: enquadra na feature específica logo abaixo,
+        // não faz sentido "pular" pra bbox da camada inteira primeiro.
+        await toggleLayer(camada, true, false);
+        if (checkbox) checkbox.checked = true; // reflete no painel sem disparar 'change' de novo (toggleLayer já foi chamado)
       }
+
+      const info = state.geojsonPorCamada.get(layerId);
+      if (!info) return false;
+      const feature = encontrarFeaturePorCentroide(info.geojson, result.lon, result.lat);
+      if (!feature) return false;
+
+      destacarResultadoDeBusca(feature.geometry);
+      const bbox = bboxDoGeoJSON({ type: "FeatureCollection", features: [feature] });
+      if (bbox) {
+        state.map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 100, maxZoom: 19, duration: 600 });
+      } else {
+        state.map.flyTo({ center: [result.lon, result.lat], zoom: 18 });
+      }
+
+      const props = feature.properties || {};
+      abrirPainelFeature(props.nome || result.label, info.cor, props, feature.geometry);
+      return true;
     }
   }
 
@@ -1181,6 +1228,67 @@
         "line-width": 3,
       },
     });
+  }
+
+  // ---- Destaque do resultado de busca --------------------------------------
+  //
+  // Quando a busca acha um registro vinculado a uma camada (ex: um
+  // imóvel, via numero_contribuinte/matrícula/etc.), em vez de só
+  // deixar um marcador solto no centro aproximado, mostra o polígono
+  // (ou linha/ponto) encontrado de verdade — contorno destacado, mapa
+  // enquadrado nele e a barra de detalhes já aberta. Ver selectResult().
+
+  const BUSCA_DESTAQUE_SOURCE_ID = "sigview-busca-destaque";
+  const BUSCA_DESTAQUE_LAYER_ID = "sigview-busca-destaque-linha";
+
+  function criarCamadaDeDestaqueBusca() {
+    state.map.addSource(BUSCA_DESTAQUE_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    state.map.addLayer({
+      id: BUSCA_DESTAQUE_LAYER_ID,
+      type: "line",
+      source: BUSCA_DESTAQUE_SOURCE_ID,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#3fa9f5", "line-width": 4 },
+    });
+  }
+
+  function destacarResultadoDeBusca(geometry) {
+    state.map.getSource(BUSCA_DESTAQUE_SOURCE_ID)?.setData({
+      type: "FeatureCollection",
+      features: [{ type: "Feature", properties: {}, geometry }],
+    });
+  }
+
+  function limparDestaqueDeBusca() {
+    state.map.getSource(BUSCA_DESTAQUE_SOURCE_ID)?.setData({ type: "FeatureCollection", features: [] });
+  }
+
+  // Acha, dentro do GeoJSON de uma camada já carregada, a feature cujo
+  // centroide (mesmo cálculo — média dos vértices — usado tanto aqui
+  // quanto em app/geoutil.py na hora de indexar) mais se aproxima do
+  // ponto salvo no índice de busca. Uma pequena tolerância absorve a
+  // perda de precisão da compactação de coordenadas (compactar_
+  // camadas.py) — sem ela, o mesmo lote comparado com ele mesmo já não
+  // bateria exatamente. Sempre devolve a feature mais próxima dentro
+  // da tolerância (nunca a mais próxima "custe o que custar"), pra não
+  // arriscar destacar o lote errado se o índice estiver desatualizado.
+  function encontrarFeaturePorCentroide(geojson, lon, lat) {
+    const TOLERANCIA_GRAUS = 0.001; // ~90-100m em São Paulo — folga generosa pra compactação, nunca pra "adivinhar"
+    let melhor = null;
+    let melhorDist = Infinity;
+    for (const feature of geojson.features || []) {
+      const centro = centroideAproximado(feature.geometry);
+      if (!centro) continue;
+      const dist = Math.hypot(centro[0] - lon, centro[1] - lat);
+      if (dist < melhorDist) {
+        melhorDist = dist;
+        melhor = feature;
+      }
+    }
+    return melhorDist <= TOLERANCIA_GRAUS ? melhor : null;
   }
 
   // Só os anéis externos importam pra "faz divisa" (buracos internos

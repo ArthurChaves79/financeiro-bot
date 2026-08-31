@@ -130,6 +130,30 @@ class JsApi:
             return None
         return resultado if isinstance(resultado, str) else resultado[0]
 
+    def abrir_arquivo_local(self, caminho: str) -> dict:
+        """Abre um arquivo (foto anexada a um imóvel, PDF etc.) no
+        programa padrão do Windows pra esse tipo de arquivo — ex: uma
+        foto abre no visualizador de imagens, um PDF no leitor de PDF.
+        Usado pelos links de "Documentos" na barra de detalhes (ver
+        app.js renderLinhaPainel/extrairDocumentos). Um simples <a
+        href="C:\\..."> não funciona de dentro da janela do programa
+        (é uma página servida por http://localhost, navegar pra um
+        caminho de arquivo local a partir dali é bloqueado por
+        segurança) — os.startfile é o mesmo mecanismo de um duplo-
+        clique no Explorer."""
+        caminho_normalizado = caminho.strip()
+        if not caminho_normalizado:
+            return {"ok": False, "erro": "Caminho vazio"}
+        if not Path(caminho_normalizado).exists():
+            return {"ok": False, "erro": f"Arquivo não encontrado: {caminho_normalizado}"}
+        try:
+            os.startfile(caminho_normalizado)  # noqa: S606 — só existe no Windows, é o alvo deste programa
+        except AttributeError:
+            return {"ok": False, "erro": "Abrir arquivo local só funciona no Windows"}
+        except OSError as exc:
+            return {"ok": False, "erro": str(exc)}
+        return {"ok": True}
+
 
 def main() -> None:
     server_thread = threading.Thread(target=_run_server, daemon=True)

@@ -1513,12 +1513,15 @@
       const origemProps = (poligonoSelecionado && poligonoSelecionado.feature.properties) || {};
       const origem = _enderecoResumo(origemProps) || origemProps.nome || (poligonoSelecionado && poligonoSelecionado.info.titulo) || "";
 
+      // Só Endereço + Registro na folha impressa — a Distância é útil
+      // na tela (pra comparar/ordenar), mas não faz parte do que vai
+      // pro processo/notificação (pedido do usuário).
       const linhasHtml = ultimosEncontrados
-        .map(({ info, feature, distancia }) => {
+        .map(({ info, feature }) => {
           const props = feature.properties || {};
           const endereco = _enderecoResumo(props) || props.nome || info.titulo;
           const registro = _registroResumo(props) || "—";
-          return `<tr><td>${escapeHtml(endereco)}</td><td>${escapeHtml(registro)}</td><td>${distancia.toFixed(1)} m</td></tr>`;
+          return `<tr><td>${escapeHtml(endereco)}</td><td>${escapeHtml(registro)}</td></tr>`;
         })
         .join("");
 
@@ -1527,7 +1530,7 @@
         <h1>Confrontantes${origem ? ` — ${escapeHtml(origem)}` : ""}</h1>
         <p class="print-sub">Gerado pelo SIG View em ${new Date().toLocaleString("pt-BR")}</p>
         <table>
-          <thead><tr><th>Endereço</th><th>Nº de Registro</th><th>Distância</th></tr></thead>
+          <thead><tr><th>Endereço</th><th>Nº de Registro</th></tr></thead>
           <tbody>${linhasHtml}</tbody>
         </table>
       `;
@@ -2139,6 +2142,28 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") fecharPainelFeature();
     });
+
+    // Links de "Documentos" (fotos, PDFs etc. — ver renderLinhaPainel)
+    // que apontam pra um caminho local (não http/https) abrem pelo
+    // programa padrão do Windows daquele tipo de arquivo, em vez de um
+    // <a href> comum — que não funciona pra caminho de arquivo local
+    // de dentro da janela do programa (é uma página servida por
+    // http://localhost, navegar pra um caminho local a partir dali é
+    // bloqueado por segurança do próprio navegador). Delegado no body
+    // do painel (não em cada link) porque o conteúdo é recriado via
+    // innerHTML toda vez que abre uma feature.
+    document.getElementById("feature-panel-body").addEventListener("click", (e) => {
+      const link = e.target.closest("a[data-caminho]");
+      if (!link) return;
+      const caminho = link.dataset.caminho;
+      if (/^https?:\/\//i.test(caminho) || !window.pywebview?.api?.abrir_arquivo_local) {
+        return; // URL de verdade, ou sem a ponte nativa (modo navegador) — deixa o <a> normal cuidar
+      }
+      e.preventDefault();
+      window.pywebview.api.abrir_arquivo_local(caminho).then((resultado) => {
+        if (!resultado.ok) alert(`Não foi possível abrir o arquivo: ${resultado.erro || "erro desconhecido"}`);
+      });
+    });
   }
 
   function fecharPainelFeature() {
@@ -2170,7 +2195,10 @@
   function renderLinhaPainel(linha) {
     const valorHtml = linha.documentos
       ? `<div class="feature-panel-docs">${linha.documentos
-          .map((doc) => `<a href="${escapeHtml(doc)}" target="_blank" rel="noopener">📎 ${escapeHtml(nomeArquivoDoCaminho(doc))}</a>`)
+          .map(
+            (doc) =>
+              `<a href="${escapeHtml(doc)}" data-caminho="${escapeHtml(doc)}" target="_blank" rel="noopener">📎 ${escapeHtml(nomeArquivoDoCaminho(doc))}</a>`
+          )
           .join("")}</div>`
       : escapeHtml(linha.valor);
     return `

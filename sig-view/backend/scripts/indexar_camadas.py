@@ -63,6 +63,23 @@ def _carregar_features(path: Path) -> list[dict]:
     return features
 
 
+def _texto_de(valor: object) -> str:
+    """Converte qualquer valor de propriedade pra texto pesquisável —
+    inclusive lista/tupla (comum quando uma feature tem mais de um
+    endereço, ex: lote de esquina com duas ruas, ou mais de uma
+    transcrição), juntando com vírgula em vez de gravar o repr cru do
+    Python (que apareceria com colchetes/aspas pro usuário, ex:
+    "['Rua Colombia - 157']" — e pior, o sqlite3 nem aceita gravar uma
+    lista direto numa coluna TEXT, então sem isso a indexação inteira
+    do arquivo quebrava com "Error binding parameter... type 'list' is
+    not supported")."""
+    if valor is None:
+        return ""
+    if isinstance(valor, (list, tuple)):
+        return ", ".join(t for t in (_texto_de(v) for v in valor) if t)
+    return str(valor).strip()
+
+
 def indexar(
     camada_path: Path,
     db_path: Path,
@@ -78,6 +95,9 @@ def indexar(
 
     conn.execute("DELETE FROM enderecos WHERE layer_id = ?", (layer_id,))
 
+    def campo(props: dict, nome: str | None) -> str | None:
+        return (_texto_de(props.get(nome)) or None) if nome else None
+
     inseridos = 0
     ignorados = 0
     linhas = []
@@ -90,15 +110,15 @@ def indexar(
         lon, lat = centro
 
         props = feature.get("properties") or {}
-        partes_rotulo = [str(props[c]) for c in campos_rotulo if props.get(c) not in (None, "")]
+        partes_rotulo = [t for t in (_texto_de(props.get(c)) for c in campos_rotulo) if t]
         rotulo = " — ".join(partes_rotulo) or None
 
         linhas.append(
             (
                 tipo,
-                props.get(campo_logradouro) if campo_logradouro else None,
-                props.get(campo_bairro) if campo_bairro else None,
-                props.get(campo_cidade) if campo_cidade else None,
+                campo(props, campo_logradouro),
+                campo(props, campo_bairro),
+                campo(props, campo_cidade),
                 None,  # cep
                 rotulo,
                 layer_id,

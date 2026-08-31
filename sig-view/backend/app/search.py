@@ -21,12 +21,45 @@ from .config import settings
 
 _CEP_RE = re.compile(r"^\d{5}-?\d{3}$")
 
-# "Rua Natal 974" -> ("Rua Natal", "974"). Exige espaço antes do número
-# (não só "não-dígito") pra não confundir com um código tipo
-# "045.123.0045-6" (que termina em dígito colado num "-", sem espaço) —
-# esse continua indo pra busca normal por texto, sem tentar separar
-# número nenhum.
-_ENDERECO_COM_NUMERO_RE = re.compile(r"^(.+?)\s+(\d{1,6})$")
+# Reconhece o número de porta no fim da busca em qualquer um destes
+# formatos (pedido do usuário):
+#   "Rua Natal 974"        "Rua Natal, 974"
+#   "Rua Natal nº974"      "Rua Natal, nº 974"
+# O separador antes do número (espaço OU vírgula) é OBRIGATÓRIO, não
+# opcional — sem isso, um código tipo "045.123.0045-6" (termina em
+# dígito colado num "-", sem espaço/vírgula nenhum) seria confundido
+# com "045.123.0045" + número "6". O marcador "nº/n°/n." também exige
+# o símbolo junto (º, °, ou ponto) — sem isso, um "n" solto viraria
+# ambíguo com rua que termina em "n" antes de um número (ex: "Avenida
+# Berlin 100" virando "Avenida Berli" + "n 100").
+_ENDERECO_COM_NUMERO_RE = re.compile(r"^(.+?)(?:\s+|\s*,\s*)(?:n[º°.]\s*)?(\d{1,6})$", re.IGNORECASE)
+
+# Tipo de logradouro abreviado <-> por extenso — o primeiro termo da
+# busca vira um grupo "OR" com as duas formas, pra "Av Paulista" achar
+# "Avenida Paulista" e vice-versa, não importa como o dado foi
+# indexado (o FTS5 já casa prefixo, então "av*" sozinho já acha
+# "avenida" — o problema real é a direção contrária, escrever a
+# palavra inteira quando o dado tem só a abreviação).
+_TIPOS_LOGRADOURO_SINONIMOS: dict[str, tuple[str, ...]] = {
+    "av": ("av", "avenida"),
+    "avenida": ("av", "avenida"),
+    "r": ("r", "rua"),
+    "rua": ("r", "rua"),
+    "al": ("al", "alameda"),
+    "alameda": ("al", "alameda"),
+    "tv": ("tv", "travessa"),
+    "travessa": ("tv", "travessa"),
+    "pc": ("pc", "praca"),
+    "praca": ("pc", "praca"),
+    "estr": ("estr", "estrada"),
+    "estrada": ("estr", "estrada"),
+    "rod": ("rod", "rodovia"),
+    "rodovia": ("rod", "rodovia"),
+    "vl": ("vl", "vila"),
+    "vila": ("vl", "vila"),
+    "lg": ("lg", "largo"),
+    "largo": ("lg", "largo"),
+}
 
 
 @dataclass
@@ -131,11 +164,29 @@ def _match_expr(texto: str) -> str | None:
     unicode61) já quebra o texto indexado assim (ex: "045.123.0045"
     vira os tokens "045", "123", "0045" separados); se a busca não
     separar do mesmo jeito, digitar um código com pontos/traços (SQL de
-    imóvel, matrícula etc.) não encontra nada mesmo estando indexado."""
+    imóvel, matrícula etc.) não encontra nada mesmo estando indexado.
+
+    O primeiro termo (tipo de logradouro, ex: "av"/"avenida") vira um
+    grupo OR com a forma abreviada e por extenso — ver
+    _TIPOS_LOGRADOURO_SINONIMOS. Buscar só o nome da rua, sem tipo
+    nenhum (ex: "Paulista"), já funciona sem precisar de nada especial
+    aqui: um único termo já basta pra achar qualquer registro que o
+    contenha, com ou sem "Av"/"Rua" na frente."""
     terms = [t for t in re.split(r"[^a-z0-9]+", _normalize(texto)) if t]
     if not terms:
         return None
-    return " ".join(f"{_escape_fts(t)}*" for t in terms)
+    partes = []
+    for i, termo in enumerate(terms):
+        sinonimos = _TIPOS_LOGRADOURO_SINONIMOS.get(termo) if i == 0 else None
+        if sinonimos:
+            partes.append("(" + " OR ".join(f"{_escape_fts(s)}*" for s in sinonimos) + ")")
+        else:
+            partes.append(f"{_escape_fts(termo)}*")
+    # "AND" explícito, não só justaposição — o FTS5 não aceita um termo
+    # solto logo depois de um grupo "(...)" sem operador entre os dois
+    # (dá "syntax error"), mesmo com o "E" implícito funcionando entre
+    # dois termos soltos.
+    return " AND ".join(partes)
 
 
 def _search_fts(conn: sqlite3.Connection, query: str, limit: int) -> list[SearchResult]:

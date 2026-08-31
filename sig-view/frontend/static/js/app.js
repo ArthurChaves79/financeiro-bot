@@ -1370,6 +1370,8 @@
   function _enderecoResumo(props) {
     const indice = indexarPropriedades(props);
     const descartar = new Set();
+    const enderecoPronto = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.enderecoCompleto);
+    if (enderecoPronto) return enderecoPronto;
     const tipo = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.tipoLogradouro);
     const logradouro = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.logradouro);
     const numero = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.numeroEndereco);
@@ -2068,9 +2070,16 @@
     lote: ["lote"],
     contribuinte: ["contribuinte", "numerocontribuinte", "numcontribuinte", "inscricaoimobiliaria", "inscricao"],
     matricula: ["matricula", "nmatricula", "numeromatricula"],
-    transcricao: ["transcricao", "ntranscricao", "numerotranscricao"],
+    transcricao: ["transcricao", "transcricoes", "ntranscricao", "numerotranscricao"],
+    // Endereço já pronto (uma ou mais, ex: lote de esquina com duas
+    // ruas) — tem prioridade sobre montar a partir de tipo+logradouro+
+    // número quando presente (ver montarLinhasPainel). "endereco"/
+    // "enderecocompleto" viraram exclusivos daqui (antes também
+    // apareciam em "logradouro" — mas um endereço pronto não é só o
+    // nome da rua, então não fazia sentido tratar igual).
+    enderecoCompleto: ["enderecos", "endereco", "enderecocompleto", "endereco_completo"],
     tipoLogradouro: ["tipologradouro", "tipoendereco", "tipo"],
-    logradouro: ["logradouro", "endereco", "rua", "enderecocompleto"],
+    logradouro: ["logradouro", "rua", "nomelogradouro"],
     numeroEndereco: ["numeroendereco", "nendereco", "numero", "num"],
     loteamento: ["loteamento", "nomeloteamento"],
     documentos: ["documentos", "documento", "anexos", "anexo", "linkdocumentos", "urldocumentos", "arquivos", "arquivo"],
@@ -2242,12 +2251,19 @@
     const consumidas = new Set();
     const linhas = [];
 
-    // Endereço: Tipo + Logradouro + nº (ex: "Rua Exemplo, 123") — vira
-    // o título do painel (ver abrirPainelFeature), não uma linha.
-    const tipo = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.tipoLogradouro);
-    const logradouro = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.logradouro);
-    const numeroEndereco = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.numeroEndereco);
-    const titulo = ([tipo, logradouro].filter(Boolean).join(" ").trim() + (numeroEndereco ? `, ${numeroEndereco}` : "")).trim();
+    // Endereço — vira o título do painel (ver abrirPainelFeature), não
+    // uma linha. Um campo já pronto (ex: "enderecos": ["Rua Exemplo -
+    // 123"], possivelmente mais de um endereço num lote de esquina) tem
+    // prioridade; só monta a partir de Tipo + Logradouro + nº quando
+    // não tiver um campo pronto (dado vindo em colunas separadas).
+    const enderecoPronto = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.enderecoCompleto);
+    let titulo = enderecoPronto;
+    if (!titulo) {
+      const tipo = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.tipoLogradouro);
+      const logradouro = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.logradouro);
+      const numeroEndereco = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.numeroEndereco);
+      titulo = ([tipo, logradouro].filter(Boolean).join(" ").trim() + (numeroEndereco ? `, ${numeroEndereco}` : "")).trim();
+    }
 
     // Número do Registro: Matrícula (prioridade) ou Transcrição.
     const matricula = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.matricula);

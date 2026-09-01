@@ -1504,8 +1504,9 @@
     }
 
     // Imprime de verdade (abre a seleção de impressora do Windows) —
-    // diferente do "🖨 Imprimir" do topo (que salva uma imagem do
-    // mapa), aqui é uma tabela de texto simples.
+    // diferente do "🖨️ Layout p/ impressão" do topo (que so SALVA uma
+    // imagem do mapa, nao abre a impressora), aqui e uma tabela de
+    // texto simples.
     //
     // Primeira versão disso usava um <iframe> escondido com
     // iframe.contentWindow.print() — mas impressão de sub-frame não é

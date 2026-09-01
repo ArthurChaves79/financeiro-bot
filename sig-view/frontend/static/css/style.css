@@ -411,9 +411,9 @@ html, body {
   cursor: pointer;
 }
 
-/* Empurra os botões (Medir + Vizinhos + Salvar imagem + Imprimir +
-   Manutenção + Configurações) juntos pra direita — só o primeiro
-   deles precisa do auto-margin. */
+/* Empurra os botões (Medir + Vizinhos + Salvar imagem + Layout p/
+   impressão + Manutenção + Configurações) juntos pra direita — só o
+   primeiro deles precisa do auto-margin. */
 #measure-btn {
   margin-left: auto;
 }

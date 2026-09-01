@@ -1388,6 +1388,11 @@
   // reconhecidos usados na barra lateral de detalhes (CAMPOS_CONHECIDOS),
   // só que soltos aqui (sem "consumir" nada de um índice compartilhado),
   // pra montar uma linha curta de listagem.
+  // Mesma prioridade de montarLinhasPainel (painel de detalhes):
+  // Endereço quando existe (Imóveis); sem endereço, nome do Loteamento
+  // (Loteamento não tem esse conceito) - antes disso os chamadores
+  // caiam pro "nome" cru do polígono (código do lote), menos
+  // informativo, na lista de busca/confrontantes/CSV que usam isto.
   function _enderecoResumo(props) {
     const indice = indexarPropriedades(props);
     const descartar = new Set();
@@ -1397,7 +1402,9 @@
     const logradouro = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.logradouro);
     const numero = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.numeroEndereco);
     const endereco = [tipo, logradouro].filter(Boolean).join(" ").trim() + (numero ? `, ${numero}` : "");
-    return endereco.trim() || null;
+    if (endereco.trim()) return endereco.trim();
+    const loteamentoNome = pegarPropriedade(props, indice, descartar, CAMPOS_CONHECIDOS.loteamento);
+    return loteamentoNome || null;
   }
 
   function _registroResumo(props) {
@@ -2478,12 +2485,14 @@
   }
 
   // Devolve { titulo, linhas }: titulo é o Endereço (Tipo + Logradouro
-  // + nº), usado como cabeçalho do painel em vez de aparecer solto no
-  // meio da lista — por isso NÃO entra em "linhas". A ordem do resto
-  // segue o pedido: Matrícula/Transcrição, Contribuinte, Loteamento, e
-  // só então o que mais tiver (Área calculada, Documentos, Observações,
-  // qualquer outro campo cru) — cada linha só aparece se tiver valor,
-  // nunca em branco.
+  // + nº) quando existe (camada Imóveis) — sem endereço, cai pro nome
+  // do Loteamento (camada Loteamento, que não tem esse conceito).
+  // Usado como cabeçalho do painel em vez de aparecer solto no meio da
+  // lista — por isso NÃO entra em "linhas". A ordem do resto segue o
+  // pedido: Matrícula/Transcrição, Contribuinte, Loteamento, e só então
+  // o que mais tiver (Área calculada, Documentos, Observações, qualquer
+  // outro campo cru) — cada linha só aparece se tiver valor, nunca em
+  // branco.
   function montarLinhasPainel(props, geometry) {
     const indice = indexarPropriedades(props);
     const consumidas = new Set();
@@ -2502,6 +2511,16 @@
       const numeroEndereco = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.numeroEndereco);
       titulo = ([tipo, logradouro].filter(Boolean).join(" ").trim() + (numeroEndereco ? `, ${numeroEndereco}` : "")).trim();
     }
+    // Sem endereço (camada Loteamento, que não tem esse conceito) — usa
+    // o nome do Loteamento como título, em vez de cair pro "nome"/
+    // "name" cru do polígono lá embaixo em abrirPainelFeature (que,
+    // vindo do SIG Editor, é só o código do lote, ex: "0025" — bom pra
+    // casar polígono na hora de aplicar correção de geometria, mas
+    // pouco informativo como título aqui). Lido ANTES da linha
+    // "Loteamento" mais abaixo por isso — reaproveitado ali, não lido
+    // de novo (pegarPropriedade já marcou como consumida).
+    const loteamentoNome = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamento);
+    if (!titulo) titulo = loteamentoNome;
 
     // Número do Registro: Matrícula (prioridade) ou Transcrição.
     const matricula = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.matricula);
@@ -2534,8 +2553,7 @@
       if (lote) linhas.push({ label: "Lote", valor: lote });
     }
 
-    const loteamento = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamento);
-    if (loteamento) linhas.push({ label: "Loteamento", valor: loteamento });
+    if (loteamentoNome) linhas.push({ label: "Loteamento", valor: loteamentoNome });
 
     // Área calculada na hora, a partir da própria geometria — não
     // depende de nenhum campo/atributo do banco (só entra pra

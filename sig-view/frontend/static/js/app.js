@@ -2511,12 +2511,28 @@
 
     // Contribuinte = Setor + Quadra + Lote (ou já vem pronto num campo
     // próprio, ex: vindo direto do SQL) — mostrado como um só valor.
+    // "Contribuinte" (inscrição cadastral/IPTU) SEMPRE tem os 3 números
+    // juntos — só faz sentido montar a partir de Quadra+Lote quando
+    // também tem Setor. Uma camada de Loteamento tem Quadra/Lote mas
+    // NUNCA tem Setor (não é um conceito que existe ali) — antes desta
+    // checagem, esses lotes ganhavam um "Contribuinte" fabricado tipo
+    // "012.0003", que não significa nada nesse tipo de lote. Sem
+    // Setor, mostra Quadra/Lote como linhas separadas em vez de
+    // simplesmente sumir (os dois já foram lidos/consumidos aqui em
+    // cima de qualquer jeito, então precisam aparecer em algum lugar).
     const setor = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.setor);
     const quadra = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.quadra);
     const lote = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.lote);
     const contribuinteDireto = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.contribuinte);
-    const contribuinte = contribuinteDireto || [setor, quadra, lote].filter(Boolean).join(".");
-    if (contribuinte) linhas.push({ label: "Contribuinte", valor: contribuinte });
+    if (contribuinteDireto) {
+      linhas.push({ label: "Contribuinte", valor: contribuinteDireto });
+    } else if (setor) {
+      const contribuinte = [setor, quadra, lote].filter(Boolean).join(".");
+      if (contribuinte) linhas.push({ label: "Contribuinte", valor: contribuinte });
+    } else {
+      if (quadra) linhas.push({ label: "Quadra", valor: quadra });
+      if (lote) linhas.push({ label: "Lote", valor: lote });
+    }
 
     const loteamento = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamento);
     if (loteamento) linhas.push({ label: "Loteamento", valor: loteamento });

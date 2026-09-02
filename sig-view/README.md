@@ -422,6 +422,49 @@ não aparecem — não precisa "limpar" a planilha/banco antes de exportar.
 Propriedades internas do SIG View (usadas só pra estilo/controle, como a
 cor ou se foi vinculada a um banco) começam com `_` e nunca aparecem.
 
+## Camada de Jurisdição dos RIs
+
+Além de Imóveis e Loteamento (que vêm prontos do SIG Editor), o SIG View
+também recebe uma terceira camada de referência: os limites de
+jurisdição de cada RI (Registro de Imóveis) — geralmente um arquivo
+único, exportado do GeoSampa, com um `<Folder>` por RI e um `<Placemark>`
+por subdistrito daquele RI.
+
+Usar esse KML/KMZ direto (com `converter_kml_para_geojson.py`, ou
+deixando o SIG View convertê-lo na hora) funciona, mas cada subdistrito
+mantém a cor "de sessão de desenho" com que foi originalmente feito no
+Google Earth — normalmente uma cor diferente por subdistrito, mesmo
+dentro do mesmo RI. Pra essa camada, o que faz sentido é o oposto: um
+contorno bem fino e um preenchimento discreto, com **todos os
+subdistritos do mesmo RI na mesma cor** (só pra identificar de relance
+qual área pertence a qual RI, sem competir visualmente com os lotes por
+cima). Também dá pra aproveitar melhor os nomes: esse tipo de arquivo
+costuma repetir o nome do RI inteiro em todo `<Placemark>` (ou deixar em
+branco), e só o campo dentro do `<description>` (`"9° SUBDISTRITO - VILA
+MARIANA"`, por exemplo) realmente identifica o subdistrito.
+
+`scripts/preparar_jurisdicao_ris.py` faz esse preparo: agrupa por RI
+(uma cor determinística por RI — reaproveitando um KML/KMZ maior num RI
+só ou trocando de arquivo não embaralha as cores dos outros), extrai um
+nome de subdistrito legível a partir do `ID`, e já gera contorno fino +
+preenchimento discreto.
+
+```bash
+python scripts/preparar_jurisdicao_ris.py "Registros de Imóveis de SP.kmz"
+# gera uma subpasta "Jurisdicao" do lado do arquivo, com um .geojson por RI
+
+python scripts/preparar_jurisdicao_ris.py entrada.kmz --saida "\\servidor\sigview\layers\Jurisdicao" \
+    --opacidade 0.15 --espessura-contorno 1
+```
+
+Rode uma vez e mova (ou já gere direto com `--saida`) a pasta resultante
+pra dentro da **Pasta de camadas** configurada no SIG View — ela aparece
+como um grupo próprio ("Jurisdicao") no painel de camadas, do lado das
+camadas de Imóveis e Loteamento que vêm do SIG Editor. Se a fonte no
+GeoSampa for atualizada, é só rodar o script de novo por cima.
+
+`python scripts/preparar_jurisdicao_ris.py --help` mostra todas as opções.
+
 ## Índice com atualização automática (`<NetworkLink>`)
 
 Se você já mantém seus KMLs numa pasta de rede separada (fora da pasta

@@ -2373,12 +2373,17 @@
   }
 
   function renderLinhaPainel(linha) {
+    // Cada item de linha.documentos é uma string (caminho cru — rótulo
+    // do link vira o nome do ARQUIVO, ver obterDocumentos) ou um objeto
+    // {rotulo, caminho} (Loteamento — rótulo vira o nome do DOCUMENTO,
+    // ver obterDocumentosLoteamento).
     const valorHtml = linha.documentos
       ? `<div class="feature-panel-docs">${linha.documentos
-          .map(
-            (doc) =>
-              `<a href="${escapeHtml(doc)}" data-caminho="${escapeHtml(doc)}" target="_blank" rel="noopener">📎 ${escapeHtml(nomeArquivoDoCaminho(doc))}</a>`
-          )
+          .map((doc) => {
+            const caminho = typeof doc === "string" ? doc : doc.caminho;
+            const rotulo = typeof doc === "string" ? nomeArquivoDoCaminho(doc) : doc.rotulo;
+            return `<a href="${escapeHtml(caminho)}" data-caminho="${escapeHtml(caminho)}" target="_blank" rel="noopener">📎 ${escapeHtml(rotulo)}</a>`;
+          })
           .join("")}</div>`
       : escapeHtml(linha.valor);
     return `
@@ -2411,6 +2416,12 @@
     logradouro: ["logradouro", "rua", "nomelogradouro"],
     numeroEndereco: ["numeroendereco", "nendereco", "numero", "num"],
     loteamento: ["loteamento", "nomeloteamento"],
+    // número do Loteamento (ex: "loteamento_numero" do SIG Editor de
+    // Lotes) - junto do nome na linha "Loteamento" (ver montarLinhasPainel),
+    // não uma linha própria: é a forma comum de localizar um Loteamento
+    // no cartório, então merece aparecer junto do nome, não só sumir
+    // (era assim que aparecia antes: cru, como "Loteamento numero").
+    loteamentoNumero: ["loteamentonumero", "numeroloteamento"],
     documentos: [
       "documentos", "documento", "anexos", "anexo", "linkdocumentos", "urldocumentos", "arquivos", "arquivo",
       "foto", "fotos", "imagem", "imagens", "link", "links", "url", "midia", "midias",
@@ -2418,15 +2429,29 @@
     observacoes: ["observacoes", "observacao", "obs"],
   };
 
-  // Propriedades usadas só pra colorir o polígono/linha/ponto no mapa
-  // (ver corComFallback em toggleLayer) — não são informação pra
-  // exibir na barra de detalhes, então nunca entram na lista de
-  // "qualquer outra propriedade" lá embaixo. As com "_" na frente (ex:
-  // "_cor_preenchimento", vindas de KML) já eram ignoradas antes disso
-  // existir; essas aqui são as versões sem "_" (ex: um "cor" que o
-  // próprio usuário colocou no GeoJSON).
+  // Propriedades que NUNCA aparecem na lista de "qualquer outra
+  // propriedade" da barra de detalhes — nem quando não batem com
+  // nenhum CAMPOS_CONHECIDOS. Dois motivos diferentes agrupados aqui:
+  // - cor (fill/stroke/etc., ver corComFallback em toggleLayer): serve
+  //   só pra pintar o polígono/linha/ponto no mapa, não é informação
+  //   pra mostrar. As com "_" na frente (ex: "_cor_preenchimento",
+  //   vindas de KML) já eram ignoradas antes disso existir; essas aqui
+  //   são as versões sem "_" (ex: um "cor" que o próprio usuário
+  //   colocou no GeoJSON) — "stroke-opacity" faltava aqui (reportado
+  //   pelo usuário aparecendo cru na barra, tanto em Imóveis quanto
+  //   Loteamento).
+  // - "nome": sempre lido antes, como ÚLTIMO fallback de título (ver
+  //   abrirPainelFeature) — no SIG Editor de Lotes é só o código do
+  //   lote (ex: "0025"), sem valor como linha separada; repetia
+  //   embaixo mesmo já tendo virado título em cima.
+  // - "situacao": só existe em Imóveis (Matriculado/Transcrito/
+  //   Padronização pendente/Não trabalhado) — já reconhecível pela COR
+  //   do polígono + Legenda; como texto cru "situacao" (sem acento,
+  //   sem contexto) só duplicava informação já visível de outro jeito.
   const CAMPOS_DE_COR_IGNORADOS = new Set(
-    ["fill", "cor", "fill-opacity", "stroke", "stroke-width", "marker-color"].map(normalizarChave)
+    ["fill", "cor", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "marker-color", "nome", "situacao"].map(
+      normalizarChave
+    )
   );
 
   function normalizarChave(k) {
@@ -2527,6 +2552,32 @@
       return texto ? extrairDocumentos(texto) : [];
     }
     return [];
+  }
+
+  // Documentos do Loteamento (Memorial Descritivo/Planta/Contrato) - o
+  // SIG Editor de Lotes exporta cada um num campo PRÓPRIO, com nome
+  // conhecido, além do campo combinado "documentos" (que só junta os 3
+  // caminhos, sem rótulo nenhum - ver CAMPOS_CONHECIDOS.documentos).
+  // Usa esses 3 quando existirem, com o nome do DOCUMENTO como rótulo
+  // do link, em vez do nome do ARQUIVO (nomeArquivoDoCaminho) - pedido
+  // do usuário, esses 2 nem sempre batem (ex: "memorial_v3_final.pdf"
+  // é bem menos claro que "Memorial Descritivo").
+  const DOCUMENTOS_LOTEAMENTO = [
+    { chave: normalizarChave("documento_memorial"), rotulo: "Memorial Descritivo" },
+    { chave: normalizarChave("documento_planta"), rotulo: "Planta" },
+    { chave: normalizarChave("documento_contrato"), rotulo: "Contrato" },
+  ];
+
+  function obterDocumentosLoteamento(props, indice, consumidas) {
+    const encontrados = [];
+    for (const { chave, rotulo } of DOCUMENTOS_LOTEAMENTO) {
+      const chaveOriginal = indice.get(chave);
+      if (chaveOriginal === undefined) continue;
+      consumidas.add(chaveOriginal);
+      const caminho = formatarValorPropriedade(props[chaveOriginal]);
+      if (caminho) encontrados.push({ rotulo, caminho });
+    }
+    return encontrados;
   }
 
   function nomeArquivoDoCaminho(caminho) {
@@ -2642,6 +2693,7 @@
     // "Loteamento" mais abaixo por isso — reaproveitado ali, não lido
     // de novo (pegarPropriedade já marcou como consumida).
     const loteamentoNome = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamento);
+    const loteamentoNumero = pegarPropriedade(props, indice, consumidas, CAMPOS_CONHECIDOS.loteamentoNumero);
     if (!titulo) titulo = loteamentoNome;
 
     // Número do Registro: Matrícula (prioridade) ou Transcrição.
@@ -2675,7 +2727,13 @@
       if (lote) linhas.push({ label: "Lote", valor: lote });
     }
 
-    if (loteamentoNome) linhas.push({ label: "Loteamento", valor: loteamentoNome });
+    if (loteamentoNome) {
+      // "5 - Meu Loteamento" quando tem número (mesma convenção já
+      // usada no SIG Editor de Lotes) — o número é a forma comum de
+      // localizar um Loteamento no cartório, não faz sentido escondê-lo.
+      const loteamentoExibicao = loteamentoNumero ? `${loteamentoNumero} - ${loteamentoNome}` : loteamentoNome;
+      linhas.push({ label: "Loteamento", valor: loteamentoExibicao });
+    }
 
     // Área calculada na hora, a partir da própria geometria — não
     // depende de nenhum campo/atributo do banco (só entra pra
@@ -2688,8 +2746,14 @@
     // Documentos anexados (fotos, PDFs etc.) — vira link clicável, não
     // texto. obterDocumentos() trata o caso de a propriedade já vir
     // como lista (mais de um documento) separado da hora de tratar uma
-    // string única com vários caminhos juntos (ver a função).
-    const documentos = obterDocumentos(props, indice, consumidas);
+    // string única com vários caminhos juntos (ver a função). Chama os
+    // dois SEMPRE (cada um marca sua(s) própria(s) propriedade(s) como
+    // consumida, mesmo sem usar o resultado) — os 3 campos rotulados
+    // do Loteamento (obterDocumentosLoteamento) têm prioridade quando
+    // existirem, sobre o campo combinado genérico (sem rótulo).
+    const documentosGenericos = obterDocumentos(props, indice, consumidas);
+    const documentosLoteamento = obterDocumentosLoteamento(props, indice, consumidas);
+    const documentos = documentosLoteamento.length ? documentosLoteamento : documentosGenericos;
     if (documentos.length) {
       linhas.push({ label: "Documentos", documentos });
     }

@@ -472,6 +472,51 @@ do fluxo atual (que assume um lote/contribuinte comum) — ver o botão
 "Titulares" acima como o ponto de partida mais próximo, mas ainda não
 cobre esse caso.
 
+## BUGs corrigidos: campos internos vazando na barra de detalhes
+
+Reportado pelo usuário: alguns campos internos/redundantes ainda
+apareciam soltos, crus, na barra de detalhes (a lista de "qualquer
+outra propriedade" no final, ver `montarLinhasPainel`):
+
+- **`stroke-opacity`** (Imóveis e Loteamento) — só serve pra colorir o
+  contorno do polígono no mapa (ver `corComFallback`), nunca foi
+  ignorado de propósito (só `fill`/`stroke`/`fill-opacity`/`stroke-
+  width`/`marker-color` estavam em `CAMPOS_DE_COR_IGNORADOS` — faltava
+  esse). Corrigido, adicionado à mesma lista.
+- **`situacao`** (só Imóveis) — Matriculado/Transcrito/Padronização
+  pendente/Não trabalhado já é reconhecível pela COR do polígono +
+  Legenda; como texto cru "situacao" só duplicava informação. Ignorado
+  também.
+- **`nome`** (Imóveis e Loteamento) — já era lido como ÚLTIMO fallback
+  de título (é só o código do lote no SIG Editor de Lotes, ex:
+  "0025"), mas não estava marcado como "consumido", então repetia
+  embaixo como linha solta mesmo já tendo virado título em cima.
+  Ignorado.
+- **`loteamento_numero`** (só Loteamento) — em vez de só ignorar,
+  passou a aparecer **junto do nome** na linha "Loteamento" (ex: "5 -
+  Meu Loteamento", mesma convenção do combo "Loteamento:" do SIG
+  Editor de Lotes) — o número é a forma comum de localizar um
+  Loteamento no cartório, esconder ele de vez seria jogar informação
+  fora.
+- **`documento_memorial`/`documento_planta`/`documento_contrato`** (só
+  Loteamento) — o SIG Editor de Lotes já exporta esses 3 campos
+  próprios ALÉM do campo combinado "documentos" (que só junta os 3
+  caminhos, sem rótulo). Agora, quando os 3 campos próprios existem, o
+  campo "Documentos" da barra de detalhes usa eles — com uma mudança
+  a mais pedida pelo usuário: **o link mostra o nome do DOCUMENTO**
+  ("Memorial Descritivo"/"Planta"/"Contrato"), não o nome do ARQUIVO
+  (que podia ser algo tipo "memorial_v3_final.pdf", bem menos claro).
+  Continua caindo pro campo genérico "documentos" (nome do arquivo
+  como rótulo) pra qualquer outra origem de dado que não tenha esses 3
+  campos.
+
+Conferido com um script Node isolado (extrai só as funções puras do
+`app.js` — sem precisar de navegador/backend, que este ambiente não
+consegue rodar) simulando features reais no formato do SIG Editor de
+Lotes, Imóveis e Loteamento, conferindo que nenhum campo interno
+aparece solto e que os documentos do Loteamento saem com o rótulo
+certo.
+
 ## Camada de Jurisdição dos RIs
 
 Além de Imóveis e Loteamento (que vêm prontos do SIG Editor), o SIG View

@@ -41,6 +41,7 @@ pyinstaller --noconfirm --onefile --windowed --name SigView ^
   --add-data "..\frontend;frontend" ^
   --add-data "scripts;scripts" ^
   --hidden-import app.geoutil ^
+  --hidden-import app.campos_conhecidos ^
   --collect-submodules uvicorn ^
   --collect-all webview ^
   --collect-all clr_loader ^

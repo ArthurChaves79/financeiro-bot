@@ -154,6 +154,18 @@ um significa) e clique em **Rodar**. O andamento (a mesma saída que
 apareceria no terminal) fica visível ali, atualizando sozinho, até
 terminar com sucesso ou erro. Só uma tarefa roda por vez.
 
+Em **"Reindexar camadas da pasta"**, os campos "Campos pesquisáveis
+(rótulo)"/"Campo de endereço"/"Campo de bairro"/"Campo de cidade" são
+**opcionais** — reportado pelo usuário que ninguém sabe de cabeça o
+nome exato das propriedades da própria camada pra digitar ali. Deixe
+em branco (o normal) que o reconhecimento automático já pega
+contribuinte (ou Setor.Quadra.Lote), matrícula, transcrição, loteamento
+e endereço sozinho, pelos mesmos nomes de propriedade que a barra de
+detalhes do mapa já reconhece (`app/campos_conhecidos.py`) — inclusive
+o que o SIG Editor de Lotes (irmão deste programa) exporta. Só use
+esses 4 campos pra FORÇAR um nome de propriedade específico, numa
+camada com nomes fora do comum que o automático não pegou.
+
 ### Repetir automaticamente (re-sincronização agendada)
 
 Em cada tarefa, marque **"Repetir automaticamente enquanto o programa

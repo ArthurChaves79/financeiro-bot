@@ -103,23 +103,32 @@ def _tarefas_catalogo() -> dict[str, dict[str, Any]]:
                 "Matrícula, Transcrição, número do contribuinte etc. na "
                 "caixa de busca do mapa (e já mostrar o lote encontrado, "
                 "não só um marcador solto). Rode depois de adicionar ou "
-                "atualizar camadas na pasta."
+                "atualizar camadas na pasta. Os campos são reconhecidos "
+                "AUTOMATICAMENTE (mesmos nomes que a barra de detalhes já "
+                "reconhece) — normalmente não precisa preencher nada além "
+                "da Pasta/Banco abaixo, que já vêm com o valor configurado."
             ),
             "campos": [
                 _campo("pasta", "Pasta de camadas", padrao=str(settings.layers_dir)),
                 _campo("db", "Banco de busca (geocoder.db)", padrao=str(settings.geocoder_db)),
                 _campo("tipo", "Tipo", obrigatorio=False, padrao="imovel"),
                 _campo(
-                    "rotulo", "Campos pesquisáveis (rótulo)", lista=True,
+                    "rotulo", "Forçar campos pesquisáveis (rótulo)", obrigatorio=False, lista=True,
                     ajuda=(
-                        "Nomes das propriedades da feature, separados por vírgula (ex: numero_contribuinte, "
-                        "setor, quadra, lote, matricula, transcricao). Inclua numero_contribuinte aqui pra "
-                        "poder buscar um imóvel pelo número do contribuinte."
+                        "Deixe em branco — o reconhecimento automático já pega contribuinte (ou "
+                        "Setor.Quadra.Lote), matrícula, transcrição, loteamento e endereço sozinho, pelos "
+                        "nomes de propriedade mais comuns (inclusive os que o SIG Editor de Lotes exporta). "
+                        "Só preencha se sua camada usar nomes de campo bem fora do comum e o automático não "
+                        "estiver achando o que você esperava — nesse caso, liste os nomes das propriedades da "
+                        "feature separados por vírgula (ex: numero_contribuinte, setor, quadra, lote)."
                     ),
                 ),
-                _campo("logradouro", "Campo de endereço", obrigatorio=False, ajuda="Nome da propriedade com o endereço, se tiver."),
-                _campo("bairro", "Campo de bairro", obrigatorio=False),
-                _campo("cidade", "Campo de cidade", obrigatorio=False),
+                _campo(
+                    "logradouro", "Forçar campo de endereço", obrigatorio=False,
+                    ajuda="Deixe em branco pro automático reconhecer (endereço pronto, ou tipo+logradouro+número). Só preencha pra forçar um nome de propriedade específico.",
+                ),
+                _campo("bairro", "Forçar campo de bairro", obrigatorio=False, ajuda="Deixe em branco pro automático reconhecer."),
+                _campo("cidade", "Forçar campo de cidade", obrigatorio=False, ajuda="Deixe em branco pro automático reconhecer."),
             ],
         },
         "reconstruir_indice_busca": {
@@ -237,8 +246,8 @@ def _executar_reindexar_camadas(parametros: dict[str, Any]) -> None:
         raise TarefaInvalida("Informe a pasta de camadas.")
     if not pasta.exists():
         raise TarefaInvalida(f"Pasta não encontrada: {pasta}")
-    if not campos_rotulo:
-        raise TarefaInvalida("Informe ao menos um campo pesquisável (rótulo).")
+    # campos_rotulo vazio = reconhecimento automático (ver indexar_camadas.indexar
+    # e app/campos_conhecidos.py) - não é mais obrigatório digitar nada aqui
 
     extensoes = (".geojson", ".kml", ".kmz")
     arquivos = sorted(

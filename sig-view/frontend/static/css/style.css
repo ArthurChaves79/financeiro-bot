@@ -1149,6 +1149,29 @@ html, body {
   #print-area th {
     background: #eee;
   }
+  /* imagem do mapa (com cada confrontante já pintado de uma cor
+     diferente, ver imprimirConfrontantes()) - largura da folha,
+     mantendo a proporção, com uma borda fina só pra separar do
+     restante da página */
+  #print-area .print-mapa {
+    max-width: 100%;
+    border: 1px solid #999;
+    margin: 0 0 12px;
+  }
+  /* quadradinho colorido na tabela - mesma cor do preenchimento do
+     confrontante na imagem acima, pra identificar um pelo outro só de
+     bater o olho, sem precisar de legenda "Esquerdo/Direito/Fundos" */
+  #print-area .print-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 1px solid #666;
+    vertical-align: middle;
+  }
+  #print-area h2 {
+    font-size: 14px;
+    margin: 20px 0 6px;
+  }
 }
 
 /* Visualizador de imagem embutido (ver #image-lightbox no index.html

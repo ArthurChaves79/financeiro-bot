@@ -434,6 +434,44 @@ não aparecem — não precisa "limpar" a planilha/banco antes de exportar.
 Propriedades internas do SIG View (usadas só pra estilo/controle, como a
 cor ou se foi vinculada a um banco) começam com `_` e nunca aparecem.
 
+## Confrontantes — impressão conforme a Portaria Conjunta 1/88 e 1/2026 (1ª Vara de RP/SP)
+
+O botão **🧭 Confrontantes** (clique um lote, depois em cada confrontante
+achado na lista) já existia; a impressão dele (botão "🖨 Imprimir" do
+painel) foi ajustada pra seguir o modelo usado nas petições de
+usucapião perante a 1ª Vara de Registros Públicos de São Paulo — o
+usuário anexou um exemplo real (`.doc`) pra basear o formato.
+
+O que mudou:
+
+- **Cada confrontante ganha uma cor própria**, diferente dos outros
+  (não a cor da camada/arquivo de origem, que normalmente é a mesma
+  pra vários confrontantes ao mesmo tempo) — tanto pintado no polígono
+  do mapa (preenchimento + contorno) quanto no quadradinho ao lado dele
+  na lista/impressão. É assim que a folha impressa identifica cada
+  confrontante: pela cor, não mais por "Esquerdo/Direito/Fundos" (a
+  posição foi removida por pedido do usuário — a cor já resolve isso
+  sozinha, sem depender de "a partir de qual rua está olhando").
+- **A impressão agora inclui uma imagem do mapa** (captura do canvas,
+  com os confrontantes já pintados cada um na sua cor) no topo da
+  folha, antes da tabela — mesma técnica de captura do "📷 Salvar
+  imagem"/"🖨️ Layout p/ impressão" já existentes.
+- **Seção "Titulares"**: ao clicar em Imprimir, se algum confrontante
+  tiver matrícula/transcrição, o programa pergunta se você quer
+  informar o nome do titular (proprietário) de cada um — se sim, pede
+  um por um (`prompt()`, nada é gravado, vale só pra essa impressão) e
+  imprime uma tabela extra cruzando Registro + Endereço + Titular,
+  exigida pela Portaria.
+
+**Pendente, ainda não implementado** (o usuário ainda não decidiu como
+tratar): confrontante que é um **condomínio** — nesse caso o lote não é
+mais controlado pelo "contribuinte" comum, passa a ser controlado pelo
+nome do condomínio, que tem sua própria matrícula (ou uma/mais
+transcrições) e endereço próprios. Precisa de um tratamento diferente
+do fluxo atual (que assume um lote/contribuinte comum) — ver o botão
+"Titulares" acima como o ponto de partida mais próximo, mas ainda não
+cobre esse caso.
+
 ## Camada de Jurisdição dos RIs
 
 Além de Imóveis e Loteamento (que vêm prontos do SIG Editor), o SIG View

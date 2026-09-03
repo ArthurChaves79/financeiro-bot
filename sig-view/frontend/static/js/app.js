@@ -1220,12 +1220,40 @@
   // diferentes). Mostra endereço + matrícula/transcrição de cada um.
 
   const CONFRONTANTES_DESTAQUE_SOURCE_ID = "sigview-confrontantes-destaque";
+  const CONFRONTANTES_DESTAQUE_FILL_ID = "sigview-confrontantes-destaque-preenchimento";
   const CONFRONTANTES_DESTAQUE_LAYER_ID = "sigview-confrontantes-destaque-linha";
+
+  // Uma cor DIFERENTE por confrontante (não por camada/arquivo de
+  // origem, que normalmente é a mesma pra vários confrontantes ao
+  // mesmo tempo) — pedido do usuário: no relatório impresso, cada
+  // confrontante da lista precisa ser identificável na imagem do mapa
+  // só pela cor (ver corDoConfrontante/executarBusca). Repete em ciclo
+  // se houver mais confrontantes que cores na paleta.
+  const CORES_CONFRONTANTES = [
+    "#f5a93f", "#5fd576", "#e05fd5", "#f5e03f", "#5fc9d5",
+    "#e0605f", "#9d6fe0", "#d59a5f", "#6f9de0", "#5fe0a0",
+  ];
+  function corDoConfrontante(indice) {
+    return CORES_CONFRONTANTES[indice % CORES_CONFRONTANTES.length];
+  }
 
   function criarCamadaDeDestaqueConfrontantes() {
     state.map.addSource(CONFRONTANTES_DESTAQUE_SOURCE_ID, {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
+    });
+    // Preenchimento (fill) — o que faz cada confrontante ficar "pintado"
+    // de fato na imagem exportada/impressa, não só contornado (a linha
+    // sozinha não é reconhecível numa lista de várias cores parecidas).
+    state.map.addLayer({
+      id: CONFRONTANTES_DESTAQUE_FILL_ID,
+      type: "fill",
+      source: CONFRONTANTES_DESTAQUE_SOURCE_ID,
+      filter: ["==", ["get", "papel"], "confrontante"],
+      paint: {
+        "fill-color": ["coalesce", ["get", "_cor_confrontante"], "#f5a93f"],
+        "fill-opacity": 0.45,
+      },
     });
     state.map.addLayer({
       id: CONFRONTANTES_DESTAQUE_LAYER_ID,
@@ -1233,8 +1261,14 @@
       source: CONFRONTANTES_DESTAQUE_SOURCE_ID,
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        // azul = o lote selecionado; laranja = quem faz divisa com ele
-        "line-color": ["case", ["==", ["get", "papel"], "selecionado"], "#3fa9f5", "#f5a93f"],
+        // azul = o lote selecionado (o "imóvel usucapiendo"); cada
+        // confrontante usa a MESMA cor do preenchimento dele, só mais
+        // opaca (contorno sólido por cima do preenchimento translúcido)
+        "line-color": [
+          "case",
+          ["==", ["get", "papel"], "selecionado"], "#3fa9f5",
+          ["coalesce", ["get", "_cor_confrontante"], "#f5a93f"],
+        ],
         "line-width": 3,
       },
     });
@@ -1283,7 +1317,10 @@
   // porque o MapLibre sempre desenha uma camada nova adicionada por
   // cima das que já existiam.
   function trazerCamadasDeSobreposicaoParaFrente() {
-    for (const id of [CONFRONTANTES_DESTAQUE_LAYER_ID, BUSCA_DESTAQUE_LAYER_ID, MEASURE_LINE_ID, MEASURE_PONTOS_ID]) {
+    for (const id of [
+      CONFRONTANTES_DESTAQUE_FILL_ID, CONFRONTANTES_DESTAQUE_LAYER_ID,
+      BUSCA_DESTAQUE_LAYER_ID, MEASURE_LINE_ID, MEASURE_PONTOS_ID,
+    ]) {
       if (state.map.getLayer(id)) state.map.moveLayer(id); // sem 2º argumento: vai pro topo
     }
   }
@@ -1441,14 +1478,18 @@
         listEl.innerHTML = `<li class="neighbors-item" style="cursor:default">Nenhum confrontante encontrado com essa tolerância.</li>`;
         return;
       }
-      for (const { info, feature } of encontrados) {
+      for (const { info, feature, cor } of encontrados) {
         const props = feature.properties || {};
         const endereco = _enderecoResumo(props) || props.nome || info.titulo;
         const registro = _registroResumo(props);
 
         const li = document.createElement("li");
         li.className = "neighbors-item";
-        li.innerHTML = `<span class="layer-swatch" style="background:${escapeHtml(info.cor)}"></span><span class="neighbors-item-label"></span>`;
+        // cor PRÓPRIA do confrontante (não a cor da camada/arquivo de
+        // origem, que se repete entre vários) — a mesma usada no
+        // preenchimento do polígono no mapa, pra identificar um pelo
+        // outro só de bater o olho (ver corDoConfrontante).
+        li.innerHTML = `<span class="layer-swatch" style="background:${escapeHtml(cor)}"></span><span class="neighbors-item-label"></span>`;
         li.querySelector(".neighbors-item-label").textContent = registro ? `${endereco} — ${registro}` : endereco;
         li.addEventListener("click", () => {
           const centro = centroideAproximado(feature.geometry);
@@ -1515,32 +1556,104 @@
     // index.html) com a tabela e chama window.print() direto; o CSS de
     // impressão (style.css, @media print) esconde o resto do app nesse
     // momento, então só a tabela sai na folha.
-    function imprimirConfrontantes() {
+    // Confrontante identificado só por matrícula/transcrição (sem nome
+    // de prédio/loteamento próprio) — é esse tipo que ganha uma linha
+    // na seção TITULARES da impressão — no modelo anexado, TODO
+    // confrontante com matrícula/transcrição ganha uma linha ali (com
+    // OU sem endereço próprio; o que importa é ter um registro pra
+    // cruzar com o nome do titular, não ter faltado nome de prédio).
+    function _temRegistro(props) {
+      return !!_registroResumo(props);
+    }
+
+    // Pergunta (uma vez) se quer preencher o TITULAR de cada
+    // confrontante que tem matrícula/transcrição, e then pede o nome
+    // um por um - pedido do usuário, seguindo a Portaria Conjunta 1/88
+    // e 1/2026 da 1ª Vara de Registros Públicos de SP (o modelo
+    // anexado tem uma seção "TITULARES" cruzando matrícula com o nome
+    // do titular de domínio). Nada disso é GRAVADO - só entra nesta
+    // impressão especificamente.
+    //
+    // Não cobre imóvel em condomínio (onde o "titular" seria o próprio
+    // condomínio, com sua própria matrícula/transcrição e situação
+    // diferente de um lote comum) - decisão de como tratar isso ainda
+    // em aberto, ver README.
+    function _perguntarTitulares(itensComRegistro) {
+      if (!itensComRegistro.length) return {};
+      if (!confirm(
+        `${itensComRegistro.length} confrontante(s) com matrícula/transcrição encontrado(s).\n\n` +
+        "Deseja informar o nome do titular (proprietário) de cada um, pra entrar na seção TITULARES " +
+        "da impressão (exigida pela Portaria Conjunta 1/88 e 1/2026 da 1ª Vara de Registros Públicos de SP)?"
+      )) {
+        return {};
+      }
+      const titulares = {};
+      for (const item of itensComRegistro) {
+        const nome = prompt(`Titular de domínio de "${item.registro}" (${item.endereco}):`, "");
+        if (nome && nome.trim()) titulares[item.indice] = nome.trim();
+      }
+      return titulares;
+    }
+
+    async function imprimirConfrontantes() {
       if (!ultimosEncontrados.length) return;
 
       const origemProps = (poligonoSelecionado && poligonoSelecionado.feature.properties) || {};
       const origem = _enderecoResumo(origemProps) || origemProps.nome || (poligonoSelecionado && poligonoSelecionado.info.titulo) || "";
 
-      // Só Endereço + Registro na folha impressa — a Distância é útil
-      // na tela (pra comparar/ordenar), mas não faz parte do que vai
-      // pro processo/notificação (pedido do usuário).
-      const linhasHtml = ultimosEncontrados
-        .map(({ info, feature }) => {
-          const props = feature.properties || {};
-          const endereco = _enderecoResumo(props) || props.nome || info.titulo;
-          const registro = _registroResumo(props) || "—";
-          return `<tr><td>${escapeHtml(endereco)}</td><td>${escapeHtml(registro)}</td></tr>`;
-        })
+      // Monta os dados de cada linha ANTES de perguntar os titulares
+      // (evita recalcular _enderecoResumo/_registroResumo duas vezes).
+      const linhas = ultimosEncontrados.map(({ info, feature, cor }, indice) => {
+        const props = feature.properties || {};
+        const endereco = _enderecoResumo(props) || props.nome || info.titulo;
+        const registro = _registroResumo(props) || "—";
+        return { indice, cor, endereco, registro, temRegistro: _temRegistro(props) };
+      });
+
+      const titulares = _perguntarTitulares(linhas.filter((l) => l.temRegistro));
+
+      const linhasHtml = linhas
+        .map(
+          (l) =>
+            `<tr><td><span class="print-swatch" style="background:${escapeHtml(l.cor)}"></span></td>` +
+            `<td>${escapeHtml(l.endereco)}</td><td>${escapeHtml(l.registro)}</td></tr>`
+        )
         .join("");
+
+      const linhasTitulares = linhas.filter((l) => titulares[l.indice]);
+      const titularesHtml = linhasTitulares.length
+        ? `<h2>Titulares</h2>
+           <table>
+             <thead><tr><th>Nº de Registro</th><th>Endereço</th><th>Titular de domínio</th></tr></thead>
+             <tbody>${linhasTitulares
+               .map((l) => `<tr><td>${escapeHtml(l.registro)}</td><td>${escapeHtml(l.endereco)}</td><td>${escapeHtml(titulares[l.indice])}</td></tr>`)
+               .join("")}</tbody>
+           </table>`
+        : "";
+
+      // Espera o quadro atual (com o preenchimento colorido de cada
+      // confrontante já desenhado, ver executarBusca) terminar de
+      // pintar antes de capturar - mesma cautela de setupExportarImagem.
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      let imagemMapaHtml = "";
+      try {
+        const dataUrl = state.map.getCanvas().toDataURL("image/png");
+        imagemMapaHtml = `<img class="print-mapa" src="${dataUrl}" alt="Mapa com os confrontantes destacados">`;
+      } catch (err) {
+        // segue sem a imagem em vez de travar a impressão inteira por causa dela
+        console.warn("Não foi possível capturar a imagem do mapa pra impressão:", err);
+      }
 
       const printAreaEl = document.getElementById("print-area");
       printAreaEl.innerHTML = `
         <h1>Confrontantes${origem ? ` — ${escapeHtml(origem)}` : ""}</h1>
         <p class="print-sub">Gerado pelo SIG View em ${new Date().toLocaleString("pt-BR")}</p>
+        ${imagemMapaHtml}
         <table>
-          <thead><tr><th>Endereço</th><th>Nº de Registro</th></tr></thead>
+          <thead><tr><th></th><th>Endereço</th><th>Nº de Registro</th></tr></thead>
           <tbody>${linhasHtml}</tbody>
         </table>
+        ${titularesHtml}
       `;
 
       window.print();
@@ -1571,12 +1684,20 @@
         }
       }
       encontrados.sort((a, b) => a.distancia - b.distancia);
+      // uma cor própria por confrontante, na ordem final (já ordenada
+      // por distância) — fixa por essa busca, usada no mapa (fill) e na
+      // lista/impressão, sempre a mesma pro mesmo confrontante
+      encontrados.forEach((e, i) => { e.cor = corDoConfrontante(i); });
 
       state.map.getSource(CONFRONTANTES_DESTAQUE_SOURCE_ID)?.setData({
         type: "FeatureCollection",
         features: [
           { type: "Feature", properties: { papel: "selecionado" }, geometry: poligonoSelecionado.feature.geometry },
-          ...encontrados.map((e) => ({ type: "Feature", properties: { papel: "confrontante" }, geometry: e.feature.geometry })),
+          ...encontrados.map((e) => ({
+            type: "Feature",
+            properties: { papel: "confrontante", _cor_confrontante: e.cor },
+            geometry: e.feature.geometry,
+          })),
         ],
       });
 

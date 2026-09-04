@@ -1,0 +1,12 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic-settings==2.5.2
+
+# Opcional: abre o programa numa janela própria (WebView2 do Windows) em
+# vez de uma aba do navegador. Sem isso instalado, run.py cai de volta
+# pro modo "abre no navegador padrão" automaticamente.
+pywebview==5.3.2
+# 3.0.4 não instala em Python 3.13+ ("Requires-Python <3.13") — 3.0.5 é
+# o primeiro patch da mesma série 3.0.x que já suporta 3.13, sem pular
+# pra uma versão maior (3.1.x) que poderia mudar mais coisa.
+pythonnet==3.0.5; sys_platform == "win32"

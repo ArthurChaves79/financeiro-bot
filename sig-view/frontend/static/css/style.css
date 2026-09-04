@@ -1,0 +1,1219 @@
+:root {
+  --bg: #101418;
+  --panel-bg: #171c22;
+  --panel-border: #2a323c;
+  --text: #e7ecf1;
+  --text-dim: #9aa7b4;
+  --accent: #3fa9f5;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "layers map";
+  height: 100vh;
+}
+
+#topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 16px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--panel-border);
+  z-index: 5;
+}
+
+#topbar h1 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+}
+
+#search-box {
+  position: relative;
+  flex: 1;
+  max-width: 480px;
+}
+
+#search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+#search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+#search-results li {
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+#search-results li:hover,
+#search-results li.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+#search-results li.empty,
+#search-results li.error {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+#search-results li.empty:hover {
+  background: transparent;
+  color: var(--text-dim);
+}
+
+#layers-panel {
+  grid-area: layers;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-border);
+  padding: 14px 10px;
+  overflow-y: auto;
+}
+
+#layers-panel h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+  padding: 0 6px;
+}
+
+#layers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#layers-list li.empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 6px;
+}
+
+.layer-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.layer-node {
+  list-style: none;
+}
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  font-size: 13.5px;
+  border-radius: 6px;
+  min-height: 28px;
+}
+
+.layer-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.layer-row label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.layer-row input[type="checkbox"] {
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.layer-toggle-arrow {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 9px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease, color 0.12s ease;
+}
+
+.layer-toggle-arrow[aria-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+.layer-toggle-arrow:hover {
+  color: var(--text);
+}
+
+.layer-toggle-arrow--vazio {
+  cursor: default;
+}
+
+.layer-children {
+  list-style: none;
+  margin: 0 0 2px;
+  padding-left: 14px;
+  border-left: 1px solid var(--panel-border);
+}
+
+.layer-folder-name {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-folder-name--link {
+  color: var(--accent);
+}
+
+.layer-link-erro {
+  font-size: 12.5px;
+  color: #f66;
+  cursor: help;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-feature-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 1px 6px;
+}
+
+.layer-refresh-icon {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+#map {
+  grid-area: map;
+  position: relative;
+}
+
+#map-warning {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: 420px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+#map-warning code {
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--text);
+}
+
+/* Sobrescreve o balão padrão (branco) do MapLibre pra combinar com o
+   resto do app, que é escuro. */
+.maplibregl-popup-content {
+  background: var(--panel-bg);
+  color: var(--text);
+  padding: 0;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--panel-bg);
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--panel-bg);
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--panel-bg);
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--panel-bg);
+}
+
+.maplibregl-popup-close-button {
+  color: var(--text-dim);
+  font-size: 18px;
+  padding: 4px 8px;
+}
+
+/* A escala (canto inferior esquerdo) depende do CSS do MapLibre vindo
+   do CDN pra ter borda/fundo/texto visíveis — numa rede sem saída pra
+   internet essa folha pode não carregar e a escala fica "invisível"
+   (o elemento existe, só que sem nenhum estilo). Definindo aqui de
+   novo, no CSS local (que sempre carrega, por ser arquivo do próprio
+   programa), ela aparece garantido, e já combinando com o tema escuro. */
+.maplibregl-ctrl-scale {
+  background: rgba(23, 28, 34, 0.85);
+  border: 1px solid var(--panel-border);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 1px 6px;
+  margin: 0 0 10px 10px;
+}
+.maplibregl-popup-close-button:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+.sigview-popup {
+  min-width: 200px;
+  max-width: 320px;
+}
+
+.sigview-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 32px 10px 14px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.sigview-popup-header .layer-swatch {
+  width: 10px;
+  height: 10px;
+}
+
+.sigview-popup-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sigview-popup-body {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.sigview-popup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.sigview-popup-table tr:not(:last-child) td {
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.sigview-popup-table td {
+  padding: 6px 14px;
+  vertical-align: top;
+}
+
+.sigview-popup-table td:first-child {
+  color: var(--text-dim);
+  white-space: nowrap;
+  padding-right: 10px;
+  width: 1%;
+}
+
+.sigview-popup-table td:last-child {
+  word-break: break-word;
+}
+
+.sigview-popup-empty {
+  padding: 12px 14px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-style: italic;
+}
+
+#measure-btn,
+#neighbors-btn,
+#export-btn,
+#print-btn,
+#maintenance-btn,
+#settings-btn {
+  white-space: nowrap;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Empurra os botões (Medir + Vizinhos + Salvar imagem + Layout p/
+   impressão + Manutenção + Configurações) juntos pra direita — só o
+   primeiro deles precisa do auto-margin. */
+#measure-btn {
+  margin-left: auto;
+}
+
+#measure-btn:hover,
+#neighbors-btn:hover,
+#export-btn:hover,
+#print-btn:hover,
+#maintenance-btn:hover,
+#settings-btn:hover {
+  border-color: var(--accent);
+}
+
+#neighbors-btn.active,
+#measure-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+#measure-box[hidden] {
+  display: none;
+}
+
+#measure-box {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+}
+
+#measure-total {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#measure-hint {
+  color: var(--text-dim);
+}
+
+#measure-clear {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#measure-clear:hover {
+  border-color: var(--accent);
+}
+
+#settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+#settings-overlay[hidden] {
+  display: none;
+}
+
+#settings-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+#settings-panel h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+#settings-panel .hint {
+  margin: 0 0 20px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+#settings-panel label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 14px 0 4px;
+}
+
+#settings-panel label[hidden] {
+  display: none;
+}
+
+#settings-panel input,
+#settings-panel select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+#settings-panel input:focus,
+#settings-panel select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#settings-error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: #f66;
+}
+
+/* Campo de caminho (pasta/arquivo) + botão "📂 Procurar" nativo — ver
+   JsApi.escolher_pasta/escolher_arquivo (run.py). O botão some sozinho
+   quando o programa abre no navegador comum (sem pywebview), já que
+   nesse modo não tem como abrir um diálogo nativo do Windows. */
+.cfg-campo-caminho {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.cfg-campo-caminho input {
+  flex: 1;
+  min-width: 0; /* sem isso, o input não encolhe e empurra o botão pra fora do painel */
+}
+
+.cfg-procurar-btn {
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.cfg-procurar-btn:hover {
+  border-color: var(--accent);
+}
+
+.cfg-procurar-btn[hidden] {
+  display: none;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.settings-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Barra lateral suspensa com os detalhes do polígono/feature clicado —
+   substitui o pop-up antigo. Fica sempre no DOM (não usa [hidden]) pra
+   poder animar o "slide" com transform; quando fechada, some pra fora
+   da tela à direita e ignora cliques (pointer-events: none), sem
+   atrapalhar a interação com o mapa por baixo dela. */
+#feature-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: 340px;
+  max-width: calc(100% - 24px);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 6;
+  transform: translateX(calc(100% + 24px));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+#feature-panel.open {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#feature-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+#feature-panel-header .layer-swatch {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+#feature-panel-title {
+  margin: 0;
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#feature-panel-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#feature-panel-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#feature-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.feature-panel-empty {
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.feature-panel-row {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.feature-panel-row:last-child {
+  border-bottom: none;
+}
+
+.feature-panel-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.feature-panel-value {
+  font-size: 13.5px;
+  word-break: break-word;
+  white-space: pre-line;
+}
+
+.feature-panel-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.feature-panel-docs a {
+  color: var(--accent);
+  font-size: 13.5px;
+  word-break: break-word;
+  text-decoration: none;
+}
+
+.feature-panel-docs a:hover {
+  text-decoration: underline;
+}
+
+/* Painel da busca por vizinhos (🎯) — mesmo esquema do #feature-panel
+   (sempre no DOM, controlado por uma classe .open pra poder animar),
+   só que ancorado embaixo à esquerda, pra não brigar de espaço com o
+   painel de detalhes (que fica em cima à direita). */
+#neighbors-panel {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 320px;
+  max-width: calc(100% - 24px);
+  max-height: 60%;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 6;
+  transform: translateY(calc(100% + 24px));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+#neighbors-panel.open {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#neighbors-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+#neighbors-panel-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#neighbors-panel-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#neighbors-panel-close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#neighbors-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 12.5px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+#neighbors-raio {
+  width: 64px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+#neighbors-buscar {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#neighbors-buscar:hover {
+  border-color: var(--accent);
+}
+
+#neighbors-panel #neighbors-hint {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+#neighbors-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.neighbors-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.neighbors-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.neighbors-item .layer-swatch {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+
+.neighbors-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.neighbors-item-dist {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+#neighbors-panel-footer {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+#neighbors-imprimir,
+#neighbors-exportar {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+#neighbors-imprimir:hover:not(:disabled),
+#neighbors-exportar:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+#neighbors-imprimir:disabled,
+#neighbors-exportar:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Aviso de versão nova (⚙ Configurações > "Verificar versão nova em") —
+   faixa fina no topo, por cima de tudo, some ao clicar no × (lembrado
+   por versão via localStorage, não volta a incomodar pra essa mesma
+   versão depois de dispensado). */
+#version-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #06202f;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Painel de manutenção (🔧) — mesmo padrão visual do de Configurações
+   (overlay + cartão central), só mais largo pra caber o log de saída
+   das tarefas. */
+#maintenance-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+#maintenance-overlay[hidden] {
+  display: none;
+}
+
+#maintenance-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 620px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+#maintenance-panel h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+#maintenance-panel .hint {
+  margin: 0 0 20px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+#maintenance-panel label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 14px 0 4px;
+}
+
+#maintenance-panel input,
+#maintenance-panel select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+#maintenance-panel input:focus,
+#maintenance-panel select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#maint-tarefa-descricao {
+  margin-top: 6px !important;
+}
+
+.maint-campo-ajuda {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+#maintenance-error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: #f66;
+}
+
+/* Repetição automática (agendamento) — ver app/agendamento.py. */
+#maint-agendamento {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.maint-checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px !important;
+  color: var(--text) !important;
+  margin: 0 0 4px !important;
+  cursor: pointer;
+}
+
+.maint-checkbox-label input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+#maint-agenda-detalhes {
+  margin: 10px 0 12px;
+  padding-left: 4px;
+}
+
+#maint-agenda-detalhes input {
+  max-width: 120px;
+}
+
+#maint-agenda-info {
+  margin: 6px 0 0 !important;
+}
+
+#maint-agenda-salvar {
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+#maint-agenda-salvar:hover {
+  border-color: var(--accent);
+}
+
+#maintenance-log-wrap {
+  margin-top: 14px;
+}
+
+#maintenance-log {
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+#maintenance-status {
+  margin: 8px 0 0 !important;
+}
+
+#maintenance-status.erro {
+  color: #f66;
+}
+
+#maintenance-status.concluido {
+  color: #6c6;
+}
+
+#version-banner-fechar {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+/* Área de impressão (ver imprimirConfrontantes() em app.js) — some na
+   tela, e na hora de imprimir vira a ÚNICA coisa visível (o #app
+   inteiro — mapa, painéis — some), pra sair uma folha limpa com só a
+   tabela, em vez do app inteiro (que nem faz sentido impresso: mapa é
+   canvas, painéis são posicionados fixos etc.). */
+#print-area {
+  display: none;
+}
+
+@media print {
+  #app {
+    display: none !important;
+  }
+  #print-area {
+    display: block;
+    color: #111;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  #print-area h1 {
+    font-size: 16px;
+    margin: 0 0 4px;
+  }
+  #print-area p.print-sub {
+    font-size: 12px;
+    color: #555;
+    margin: 0 0 20px;
+  }
+  #print-area table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  #print-area th,
+  #print-area td {
+    border: 1px solid #999;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  #print-area th {
+    background: #eee;
+  }
+  /* imagem do mapa (com cada confrontante já pintado de uma cor
+     diferente, ver imprimirConfrontantes()) - largura da folha,
+     mantendo a proporção, com uma borda fina só pra separar do
+     restante da página */
+  #print-area .print-mapa {
+    max-width: 100%;
+    border: 1px solid #999;
+    margin: 0 0 12px;
+  }
+  /* quadradinho colorido na tabela - mesma cor do preenchimento do
+     confrontante na imagem acima, pra identificar um pelo outro só de
+     bater o olho, sem precisar de legenda "Esquerdo/Direito/Fundos" */
+  #print-area .print-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 1px solid #666;
+    vertical-align: middle;
+  }
+  #print-area h2 {
+    font-size: 14px;
+    margin: 20px 0 6px;
+  }
+}
+
+/* Visualizador de imagem embutido (ver #image-lightbox no index.html
+   e abrirImagemNoApp() em app.js). */
+#image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+
+#image-lightbox[hidden] {
+  display: none;
+}
+
+#image-lightbox-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  cursor: default;
+}
+
+#image-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+#image-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.24);
+}

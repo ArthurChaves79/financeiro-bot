@@ -1,0 +1,3 @@
+# Só necessário na máquina que vai GERAR o SigView.exe (ver gerar_executavel.bat).
+# Quem só vai usar o programa não precisa disso.
+pyinstaller==6.10.0

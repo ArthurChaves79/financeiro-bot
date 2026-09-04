@@ -1109,34 +1109,22 @@
           return;
         }
 
-        const pad = (n) => String(n).padStart(2, "0");
-        const nomeArquivo =
-          `sigview-impressao-${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}` +
-          `-${pad(agora.getHours())}${pad(agora.getMinutes())}.png`;
-
-        if (window.pywebview?.api?.salvar_imagem_png) {
-          let resultado;
-          try {
-            resultado = await window.pywebview.api.salvar_imagem_png(dataUrl, nomeArquivo);
-          } catch (err) {
-            alert(`Não foi possível salvar a imagem: ${err.message}`);
-            return;
-          }
-          if (resultado.cancelado) return;
-          if (!resultado.ok) {
-            alert(`Não foi possível salvar a imagem: ${resultado.erro || "erro desconhecido"}`);
-            return;
-          }
-          alert(`Imagem salva em:\n${resultado.caminho}`);
-          return;
-        }
-
-        const link = document.createElement("a");
-        link.href = dataUrl;
-        link.download = nomeArquivo;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        // Abre a seleção de impressora direto, em vez de forçar salvar
+        // um arquivo primeiro (pra isso já existe "📷 Salvar imagem",
+        // ao lado) — mesmo mecanismo do "🖨 Imprimir" de dentro do
+        // painel de Confrontantes: enche #print-area e chama window.
+        // print(). Não tenta combinar com os Confrontantes aqui — o
+        // botão de Imprimir de dentro daquele painel já embute o mapa
+        // (com o destaque colorido de cada confrontante) + a lista
+        // junto, de forma mais completa do que dava pra fazer aqui sem
+        // duplicar aquela lógica.
+        const printAreaEl = document.getElementById("print-area");
+        printAreaEl.innerHTML = `<img src="${dataUrl}" alt="Mapa" style="width:100%;display:block;" />`;
+        window.print();
+        // Mesmo cuidado do imprimirConfrontantes: window.print() não
+        // bloqueia o script no Chromium/WebView2, limpar antes da hora
+        // arrisca apagar o conteúdo antes da pré-visualização terminar.
+        window.addEventListener("afterprint", () => { printAreaEl.innerHTML = ""; }, { once: true });
       });
     });
   }

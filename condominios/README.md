@@ -30,6 +30,11 @@ python3 -m http.server 8000
 
 Depois acesse `http://localhost:8000` no navegador.
 
+### Versão desktop (.exe para Windows)
+
+Para gerar um executável Windows (janela própria, sem depender de
+navegador), veja `desktop/README.md`.
+
 ## Estrutura
 
 - `index.html` — estrutura da página (lista, detalhe do condomínio, diálogos de cadastro)
@@ -38,6 +43,7 @@ Depois acesse `http://localhost:8000` no navegador.
 - `sw.js` — Service Worker (cache offline)
 - `manifest.webmanifest` — metadados de instalação do PWA
 - `icons/` — ícones do app
+- `desktop/` — lançador Python (pywebview) e instruções para gerar o `.exe` Windows
 
 ## Modelo de dados
 

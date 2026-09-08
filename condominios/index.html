@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Condomínios RI</title>
+<meta name="description" content="Cadastro de condomínios para o Registro de Imóveis" />
+<meta name="theme-color" content="#0b1e19" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Condomínios" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+      <rect x="10" y="18" width="28" height="20" rx="1.5" fill="var(--coin)" stroke="var(--gold)" stroke-width="2"/>
+      <path d="M16 18v-4l8-6 8 6v4" stroke="var(--coin-ink)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M20 38v-8h8v8" stroke="var(--coin-ink)" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+      <path d="M15 23h3M15 28h3M30 23h3M30 28h3" stroke="var(--coin-ink)" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <div class="brand-text">
+      <h1>Condomínios RI</h1>
+      <p class="tagline">cadastro para o Registro de Imóveis</p>
+    </div>
+  </div>
+  <button id="settings-btn" class="icon-btn" aria-label="Backup e configurações" title="Backup e configurações">⚙</button>
+</header>
+
+<main>
+  <!-- LISTA -->
+  <section id="view-lista" class="view active">
+    <div class="list-toolbar">
+      <input type="search" id="busca-input" placeholder="Buscar condomínio, endereço, matrícula..." autocomplete="off" />
+    </div>
+    <div id="lista-empty" class="empty-state" hidden>
+      <p>Nenhum condomínio cadastrado ainda.</p>
+      <button id="empty-add-btn" class="primary-btn">Cadastrar o primeiro</button>
+    </div>
+    <ul id="condominio-list" class="condominio-list"></ul>
+  </section>
+
+  <!-- DETALHE -->
+  <section id="view-detalhe" class="view">
+    <button id="voltar-btn" class="ghost-btn back-btn">‹ Voltar</button>
+
+    <div class="detalhe-header">
+      <h2 id="detalhe-nome"></h2>
+      <div class="detalhe-header-actions">
+        <button id="editar-condominio-btn" class="secondary-btn">Editar dados</button>
+        <button id="excluir-condominio-btn" class="danger-btn">Excluir</button>
+      </div>
+    </div>
+    <p id="detalhe-endereco" class="detalhe-endereco"></p>
+
+    <!-- Registro -->
+    <div class="card-section">
+      <div class="card-section-header">
+        <h3>Registro do condomínio</h3>
+        <button id="editar-registro-btn" class="link-btn">Editar</button>
+      </div>
+      <div id="registro-resumo" class="registro-resumo"></div>
+    </div>
+
+    <!-- Pastas -->
+    <div class="card-section">
+      <div class="card-section-header">
+        <h3>Pastas de arquivamento</h3>
+        <button id="add-pasta-btn" class="link-btn">+ Pasta</button>
+      </div>
+      <p class="section-hint">Pastas onde estão arquivados os documentos que deram origem ao condomínio.</p>
+      <ul id="pasta-list" class="chip-list"></ul>
+      <p id="pasta-empty" class="empty-inline" hidden>Nenhuma pasta cadastrada.</p>
+    </div>
+
+    <!-- Livros -->
+    <div class="card-section">
+      <div class="card-section-header">
+        <h3>Incorporação, especificação e convenção</h3>
+        <button id="editar-livros-btn" class="link-btn">Editar</button>
+      </div>
+      <div id="livros-resumo" class="livros-resumo"></div>
+    </div>
+
+    <!-- Documentos -->
+    <div class="card-section">
+      <div class="card-section-header">
+        <h3>Documentos</h3>
+        <button id="add-documento-btn" class="link-btn">+ Documento</button>
+      </div>
+      <p class="section-hint">Classificação dos documentos arquivados nas pastas (auto de vistoria, quadro de áreas, especificação, convenção, plantas, outros).</p>
+      <ul id="documento-list" class="registro-list"></ul>
+      <p id="documento-empty" class="empty-inline" hidden>Nenhum documento cadastrado.</p>
+    </div>
+
+    <!-- Unidades -->
+    <div class="card-section">
+      <div class="card-section-header">
+        <h3>Unidades autônomas</h3>
+        <button id="add-unidade-btn" class="link-btn">+ Unidade</button>
+      </div>
+      <ul id="unidade-list" class="registro-list"></ul>
+      <p id="unidade-empty" class="empty-inline" hidden>Nenhuma unidade cadastrada.</p>
+    </div>
+
+    <!-- Observações -->
+    <div class="card-section">
+      <div class="card-section-header">
+        <h3>Observações</h3>
+        <button id="editar-observacoes-btn" class="link-btn">Editar</button>
+      </div>
+      <p id="observacoes-texto" class="observacoes-texto"></p>
+    </div>
+
+    <button id="exportar-html-btn" class="primary-btn full-width">Gerar HTML deste condomínio</button>
+  </section>
+</main>
+
+<button id="add-btn" class="fab" aria-label="Novo condomínio" title="Novo condomínio">+</button>
+
+<!-- Dialog: Condomínio (dados gerais) -->
+<dialog id="condominio-dialog">
+  <form id="condominio-form" method="dialog">
+    <h2 id="condominio-dialog-title">Novo condomínio</h2>
+
+    <label class="field">
+      <span>Nome do condomínio</span>
+      <input type="text" id="c-nome" required autocomplete="off" />
+    </label>
+
+    <label class="field">
+      <span>Endereço (logradouro)</span>
+      <input type="text" id="c-logradouro" autocomplete="off" />
+    </label>
+
+    <div class="field-row">
+      <label class="field">
+        <span>Número</span>
+        <input type="text" id="c-numero" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Bairro</span>
+        <input type="text" id="c-bairro" autocomplete="off" />
+      </label>
+    </div>
+
+    <div class="field-row">
+      <label class="field">
+        <span>Cidade</span>
+        <input type="text" id="c-cidade" autocomplete="off" />
+      </label>
+      <label class="field field-small">
+        <span>UF</span>
+        <input type="text" id="c-uf" maxlength="2" autocomplete="off" style="text-transform:uppercase" />
+      </label>
+      <label class="field">
+        <span>CEP</span>
+        <input type="text" id="c-cep" autocomplete="off" />
+      </label>
+    </div>
+
+    <input type="hidden" id="c-id" />
+
+    <div class="dialog-actions">
+      <button type="button" id="condominio-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="submit" id="condominio-save-btn" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Registro (matrícula/transcrição) -->
+<dialog id="registro-dialog">
+  <form id="registro-form" method="dialog">
+    <h2>Registro do condomínio</h2>
+
+    <div class="tipo-toggle" id="registro-tipo-toggle" data-value="matricula">
+      <button type="button" class="tipo-btn" data-value="matricula">Matrícula</button>
+      <button type="button" class="tipo-btn" data-value="transcricao">Transcrição</button>
+    </div>
+
+    <div id="registro-matricula-campo" class="field">
+      <label class="field">
+        <span>Número da matrícula (única)</span>
+        <input type="text" id="r-matricula" autocomplete="off" />
+      </label>
+    </div>
+
+    <div id="registro-transcricao-campo">
+      <p class="section-hint">A transcrição pode conter várias. Uma por linha.</p>
+      <label class="field">
+        <span>Números da(s) transcrição(ões)</span>
+        <textarea id="r-transcricoes" rows="3" placeholder="Ex.: 12.345&#10;12.346"></textarea>
+      </label>
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" id="registro-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="submit" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Pasta -->
+<dialog id="pasta-dialog">
+  <form id="pasta-form" method="dialog">
+    <h2 id="pasta-dialog-title">Nova pasta</h2>
+
+    <label class="field">
+      <span>Número da pasta</span>
+      <input type="text" id="p-numero" required autocomplete="off" />
+    </label>
+
+    <label class="field">
+      <span>Descrição / conteúdo</span>
+      <input type="text" id="p-descricao" autocomplete="off" placeholder="Opcional" />
+    </label>
+
+    <input type="hidden" id="p-id" />
+
+    <div class="dialog-actions">
+      <button type="button" id="pasta-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="button" id="pasta-delete-btn" class="danger-btn" hidden>Excluir</button>
+      <button type="submit" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Livros (incorporação / especificação / convenção) -->
+<dialog id="livros-dialog">
+  <form id="livros-form" method="dialog">
+    <h2>Incorporação, especificação e convenção</h2>
+    <p class="section-hint">Quando o condomínio é transcrito, pode haver registro da incorporação, especificação e convenção no Livro 3 (a maioria registra hoje apenas um resumo da convenção) ou no antigo Livro 8.</p>
+
+    <fieldset class="subform">
+      <legend>Incorporação</legend>
+      <div class="field-row">
+        <label class="field field-small"><span>Livro</span><input type="text" id="l-inc-livro" autocomplete="off" /></label>
+        <label class="field field-small"><span>Número</span><input type="text" id="l-inc-numero" autocomplete="off" /></label>
+        <label class="field field-small"><span>Folha</span><input type="text" id="l-inc-folha" autocomplete="off" /></label>
+      </div>
+      <label class="field"><span>Data</span><input type="date" id="l-inc-data" /></label>
+    </fieldset>
+
+    <fieldset class="subform">
+      <legend>Especificação do condomínio</legend>
+      <div class="field-row">
+        <label class="field field-small"><span>Livro</span><input type="text" id="l-esp-livro" autocomplete="off" /></label>
+        <label class="field field-small"><span>Número</span><input type="text" id="l-esp-numero" autocomplete="off" /></label>
+        <label class="field field-small"><span>Folha</span><input type="text" id="l-esp-folha" autocomplete="off" /></label>
+      </div>
+      <label class="field"><span>Data</span><input type="date" id="l-esp-data" /></label>
+    </fieldset>
+
+    <fieldset class="subform">
+      <legend>Convenção do condomínio</legend>
+      <div class="field-row">
+        <label class="field field-small"><span>Livro</span><input type="text" id="l-conv-livro" autocomplete="off" /></label>
+        <label class="field field-small"><span>Número</span><input type="text" id="l-conv-numero" autocomplete="off" /></label>
+        <label class="field field-small"><span>Folha</span><input type="text" id="l-conv-folha" autocomplete="off" /></label>
+      </div>
+      <label class="field">
+        <span>Tipo do registro</span>
+        <select id="l-conv-tipo">
+          <option value="integral">Convenção integral</option>
+          <option value="resumo">Resumo da convenção</option>
+        </select>
+      </label>
+      <label class="field"><span>Data</span><input type="date" id="l-conv-data" /></label>
+    </fieldset>
+
+    <div class="dialog-actions">
+      <button type="button" id="livros-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="submit" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Documento -->
+<dialog id="documento-dialog">
+  <form id="documento-form" method="dialog">
+    <h2 id="documento-dialog-title">Novo documento</h2>
+
+    <label class="field">
+      <span>Tipo de documento</span>
+      <select id="d-tipo" required>
+        <option value="auto_vistoria">Auto de vistoria</option>
+        <option value="quadro_areas">Quadro de áreas</option>
+        <option value="especificacao">Especificação</option>
+        <option value="convencao">Convenção</option>
+        <option value="plantas">Plantas</option>
+        <option value="outros">Outros</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>Descrição</span>
+      <input type="text" id="d-descricao" autocomplete="off" placeholder="Opcional" />
+    </label>
+
+    <label class="field">
+      <span>Pasta onde está arquivado</span>
+      <input type="text" id="d-pasta" list="pasta-options" autocomplete="off" placeholder="Número da pasta" />
+      <datalist id="pasta-options"></datalist>
+    </label>
+
+    <label class="field">
+      <span>Data do documento</span>
+      <input type="date" id="d-data" />
+    </label>
+
+    <input type="hidden" id="d-id" />
+
+    <div class="dialog-actions">
+      <button type="button" id="documento-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="button" id="documento-delete-btn" class="danger-btn" hidden>Excluir</button>
+      <button type="submit" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Unidade -->
+<dialog id="unidade-dialog">
+  <form id="unidade-form" method="dialog">
+    <h2 id="unidade-dialog-title">Nova unidade</h2>
+
+    <label class="field">
+      <span>Número da unidade</span>
+      <input type="text" id="u-numero" required autocomplete="off" placeholder="Ex.: Apto 101, Loja 02..." />
+    </label>
+
+    <div class="tipo-toggle" id="unidade-tipo-toggle" data-value="matricula">
+      <button type="button" class="tipo-btn" data-value="matricula">Matrícula</button>
+      <button type="button" class="tipo-btn" data-value="transcricao">Transcrição</button>
+    </div>
+
+    <label class="field">
+      <span>Número do registro da unidade</span>
+      <input type="text" id="u-registro" autocomplete="off" />
+    </label>
+
+    <label class="field">
+      <span>Fração ideal</span>
+      <input type="text" id="u-fracao" autocomplete="off" placeholder="Opcional" />
+    </label>
+
+    <input type="hidden" id="u-id" />
+
+    <div class="dialog-actions">
+      <button type="button" id="unidade-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="button" id="unidade-delete-btn" class="danger-btn" hidden>Excluir</button>
+      <button type="submit" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Observações -->
+<dialog id="observacoes-dialog">
+  <form id="observacoes-form" method="dialog">
+    <h2>Observações</h2>
+    <label class="field">
+      <span>Anotações gerais</span>
+      <textarea id="o-texto" rows="5"></textarea>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" id="observacoes-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="submit" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dialog: Configurações / Backup -->
+<dialog id="settings-dialog">
+  <form method="dialog" class="settings-form">
+    <h2>Backup e configurações</h2>
+    <p class="settings-hint">Os dados ficam salvos apenas neste dispositivo (localStorage do navegador). Faça backup regularmente.</p>
+
+    <button type="button" id="export-btn" class="primary-btn full-width">Exportar backup (.json)</button>
+
+    <label class="field">
+      <span>Importar backup</span>
+      <input type="file" id="import-input" accept="application/json,.json" />
+    </label>
+    <p id="import-status" class="import-status" hidden></p>
+
+    <hr class="settings-divider" />
+
+    <button type="button" id="wipe-btn" class="danger-btn full-width">Apagar todos os dados</button>
+
+    <div class="dialog-actions">
+      <button type="button" id="settings-close-btn" class="ghost-btn">Fechar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

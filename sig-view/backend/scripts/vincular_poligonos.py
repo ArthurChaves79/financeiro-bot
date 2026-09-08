@@ -105,6 +105,25 @@ def carregar_vinculos_manuais(path: Path | None) -> dict[str, str]:
         }
 
 
+def _mesclar_preferindo_preenchido(base: dict, novo: dict) -> dict:
+    """Funde `novo` por cima de `base`, mas nunca deixa um campo VAZIO de
+    `novo` apagar um valor que já existia em `base`. Sem isso, um
+    merge simples ({**base, **novo}) sobrescreve mesmo quando `novo`
+    não tem nada pra oferecer naquele campo — foi o que aconteceu numa
+    reimportação em massa da base fiscal (que normalmente não tem
+    matrícula) por cima de um lote que já tinha sido padronizado com a
+    matrícula preenchida manualmente: o campo em branco do CSV apagou
+    o valor certo que já estava lá, mesmo os lotes que já estavam
+    vazios não mostrando diferença nenhuma (vazio sobrescrevendo vazio
+    não muda nada visível — só o único lote já preenchido "sumiu")."""
+    resultado = dict(base)
+    for chave, valor in novo.items():
+        if valor is None or (isinstance(valor, str) and not valor.strip()):
+            continue  # campo vazio na origem nova não apaga o que já existia
+        resultado[chave] = valor
+    return resultado
+
+
 def _identificador_poligono(feature: dict, indice: int) -> str:
     """Um identificador estável o suficiente para usar no CSV de
     vínculos manuais — usa o "nome" do KML se existir, senão o índice."""
@@ -160,7 +179,8 @@ def vincular(
                 }
             )
 
-        merged_props = {**props, **(atributos or {}), **(complemento or {})}
+        merged_props = _mesclar_preferindo_preenchido(props, atributos or {})
+        merged_props = _mesclar_preferindo_preenchido(merged_props, complemento or {})
         merged_props["_vinculado"] = atributos is not None
         merged_props["_origem_chave"] = origem_chave
         features_saida.append({**feature, "properties": merged_props})

@@ -47,7 +47,21 @@ REQUIRED_COLUMNS = ["tipo", "logradouro", "bairro", "cidade", "cep", "lat", "lon
 # mesmo banco os dados vinculados às camadas/polígonos) — por isso é
 # todo "IF NOT EXISTS", idempotente independente de qual script roda
 # primeiro.
-SCHEMA = """
+#
+# Dividido em duas partes de propósito: SCHEMA_TABELA só cria a tabela
+# base (as colunas que existem desde a primeiríssima versão), e
+# SCHEMA_RESTANTE (índices/FTS/trigger) só roda DEPOIS de garantir, via
+# _migrar_colunas_novas, que toda coluna que ela referencia (rotulo,
+# layer_id) realmente existe. Rodar tudo de uma vez só (como era antes)
+# quebrava com "no such column: layer_id"/"rotulo" em qualquer
+# geocoder.db criado antes dessas colunas existirem: "CREATE TABLE IF
+# NOT EXISTS" não adiciona coluna em tabela que já existe (só cria do
+# zero se a tabela nunca existiu), então um banco antigo ficava pra
+# sempre sem elas — e a criação do índice/gatilho que as usa falhava
+# na hora, derrubando a indexação inteira de CADA arquivo (o mesmo erro
+# se repetindo pra cada camada, exatamente o que apareceu no painel de
+# Manutenção).
+SCHEMA_TABELA = """
 CREATE TABLE IF NOT EXISTS enderecos (
     id INTEGER PRIMARY KEY,
     tipo TEXT NOT NULL,
@@ -55,13 +69,14 @@ CREATE TABLE IF NOT EXISTS enderecos (
     bairro TEXT,
     cidade TEXT,
     cep TEXT,
-    rotulo TEXT,     -- texto extra pesquisável (ex: "num. contrib. 1234 — João da Silva")
-    layer_id TEXT,   -- id da camada de origem, se este registro veio de uma camada vinculada
     lat REAL NOT NULL,
     lon REAL NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_enderecos_cep ON enderecos(cep);
+"""
+
+SCHEMA_RESTANTE = """
 CREATE INDEX IF NOT EXISTS idx_enderecos_layer_id ON enderecos(layer_id);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS enderecos_fts USING fts5(
@@ -76,25 +91,29 @@ CREATE TRIGGER IF NOT EXISTS enderecos_ai AFTER INSERT ON enderecos BEGIN
 END;
 """
 
-# Faixa de numeração (par/ímpar) do trecho de rua — vem do "Eixo de
-# Logradouro" do GeoSampa (lg_ini_par/lg_fim_par/lg_ini_imp/lg_fim_imp),
-# usada pra achar o trecho certo quando a busca inclui um número (ex:
-# "Rua Natal 974"). Colunas novas, adicionadas numa tabela que já
-# existia antes delas — por isso são ALTER TABLE, não fazem parte do
-# CREATE TABLE acima (que só roda se a tabela ainda não existe).
-_COLUNAS_FAIXA_NUMERACAO = [
-    "numero_par_ini",
-    "numero_par_fim",
-    "numero_impar_ini",
-    "numero_impar_fim",
-]
+# Colunas adicionadas depois da tabela original — em qualquer
+# geocoder.db criado antes de cada uma existir, precisa de ALTER TABLE
+# pra aparecer (ver o comentário grande acima). "rotulo"/"layer_id" são
+# de quando a indexação de camadas/imóveis foi introduzida; a faixa de
+# numeração (par/ímpar) é do "Eixo de Logradouro" do GeoSampa, usada
+# pra achar o trecho certo quando a busca inclui um número de porta
+# (ex: "Rua Natal 974").
+_COLUNAS_NOVAS: dict[str, str] = {
+    "rotulo": "TEXT",  # texto extra pesquisável (ex: "num. contrib. 1234 — João da Silva")
+    "layer_id": "TEXT",  # id da camada de origem, se este registro veio de uma camada vinculada
+    "numero_par_ini": "INTEGER",
+    "numero_par_fim": "INTEGER",
+    "numero_impar_ini": "INTEGER",
+    "numero_impar_fim": "INTEGER",
+}
 
 
-def _migrar_colunas_faixa_numeracao(conn: sqlite3.Connection) -> None:
+def _migrar_colunas_novas(conn: sqlite3.Connection) -> None:
     colunas_existentes = {row[1] for row in conn.execute("PRAGMA table_info(enderecos)")}
-    for coluna in _COLUNAS_FAIXA_NUMERACAO:
+    for coluna, tipo_sql in _COLUNAS_NOVAS.items():
         if coluna not in colunas_existentes:
-            conn.execute(f"ALTER TABLE enderecos ADD COLUMN {coluna} INTEGER")
+            conn.execute(f"ALTER TABLE enderecos ADD COLUMN {coluna} {tipo_sql}")
+    conn.commit()
 
 
 def ensure_schema(db_path: Path) -> sqlite3.Connection:
@@ -103,8 +122,9 @@ def ensure_schema(db_path: Path) -> sqlite3.Connection:
     complementa o índice em vez de reconstruí-lo do zero."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
-    conn.executescript(SCHEMA)
-    _migrar_colunas_faixa_numeracao(conn)
+    conn.executescript(SCHEMA_TABELA)
+    _migrar_colunas_novas(conn)
+    conn.executescript(SCHEMA_RESTANTE)
     return conn
 
 

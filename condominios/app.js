@@ -1,4 +1,5 @@
-const STORAGE_KEY = 'condominioRI.dados';
+const STORAGE_KEY = 'sigCondominios.dados';
+const STORAGE_KEY_LEGADO = 'condominioRI.dados'; // nome usado antes de o app se chamar "SIG Condomínios"
 
 const DOC_TIPOS = {
   auto_vistoria: 'Auto de vistoria',
@@ -14,7 +15,12 @@ const DOC_TIPOS = {
 // ==============================================
 function loadData() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === null) {
+      // migra dados salvos sob o nome antigo do app, se existirem
+      raw = localStorage.getItem(STORAGE_KEY_LEGADO);
+    }
+    const parsed = JSON.parse(raw);
     return { condominios: Array.isArray(parsed && parsed.condominios) ? parsed.condominios : [] };
   } catch {
     return { condominios: [] };
@@ -919,8 +925,9 @@ function gerarHtmlCondominio(condo) {
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8" />
-<title>${escapeHtml(condo.nome)} — Condomínio RI</title>
-<meta name="description" content="Ficha do condomínio para alimentar o SIG view (lotes-condomínio)" />
+<title>${escapeHtml(condo.nome)} — SIG Condomínios</title>
+<meta name="description" content="Ficha do condomínio gerada pelo SIG Condomínios, para alimentar o SIG view (lotes-condomínio)" />
+<meta name="generator" content="SIG Condomínios" />
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1.25rem; color: #1c2620; line-height: 1.5; }
   h1 { font-size: 1.5rem; margin-bottom: 0.1rem; }
@@ -934,7 +941,8 @@ function gerarHtmlCondominio(condo) {
   pre { background: #f4f1e8; border: 1px solid #d8d0b8; border-radius: 8px; padding: 0.9rem; overflow-x: auto; font-size: 0.78rem; }
 </style>
 </head>
-<body data-sig-tipo="condominio" data-sig-condominio-id="${escapeHtml(condo.id)}">
+<body data-sig-app="condominios" data-sig-tipo="condominio" data-sig-condominio-id="${escapeHtml(condo.id)}">
+<p class="meta">Gerado pelo SIG Condomínios em ${escapeHtml(formatDateShort(todayISO()))}</p>
 <h1>${escapeHtml(condo.nome)}</h1>
 <p class="endereco">${escapeHtml(enderecoLinha(condo.endereco))}</p>
 <p class="meta">Registro do condomínio: ${escapeHtml(registroTexto)}</p>

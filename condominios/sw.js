@@ -1,4 +1,4 @@
-const CACHE_NAME = 'condominios-ri-v1';
+const CACHE_NAME = 'sig-condominios-v1';
 const ASSETS = [
   './',
   './index.html',

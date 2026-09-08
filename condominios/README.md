@@ -1,4 +1,4 @@
-# Condomínios RI
+# SIG Condomínios
 
 Aplicativo web (PWA) para cadastro de condomínios voltado ao **Registro de Imóveis** — não a uma administradora de condomínios. Funciona offline, sem servidor, com os dados salvos apenas no navegador do dispositivo (localStorage).
 

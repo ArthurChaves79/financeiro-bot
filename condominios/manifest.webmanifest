@@ -1,6 +1,6 @@
 {
-  "name": "Condomínios RI",
-  "short_name": "Condomínios",
+  "name": "SIG Condomínios",
+  "short_name": "SIG Cond.",
   "description": "Cadastro de condomínios para o Registro de Imóveis",
   "start_url": "./index.html",
   "scope": "./",

@@ -1,0 +1,22 @@
+backend/.env
+backend/data/config.json
+backend/data/geocoder.db
+backend/data/mapa.mbtiles
+data/mapa.mbtiles
+backend/data/_sample_enderecos.csv
+backend/data/layers/*.geojson
+!backend/data/layers/.gitkeep
+tiles/
+planetiler-data/
+planetiler.jar
+jre/
+dados-osm/
+__pycache__/
+*.pyc
+.venv/
+
+# gerados por gerar_executavel.bat
+SigView.exe
+backend/build/
+backend/dist/
+backend/*.spec

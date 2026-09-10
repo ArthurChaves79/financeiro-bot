@@ -105,7 +105,10 @@ def api_get_layer(layer_id: str) -> dict:
     try:
         return layers_module.get_layer(layer_id)
     except layers_module.LayerNotFound as exc:
-        raise HTTPException(status_code=404, detail=f"Camada '{layer_id}' não encontrada") from exc
+        # A mensagem de LayerNotFound já é descritiva (caminho real do
+        # arquivo, motivo provável) — bem mais útil pra quem está usando
+        # do que mostrar de volta o id em base64 da camada.
+        raise HTTPException(status_code=404, detail=str(exc) or f"Camada '{layer_id}' não encontrada") from exc
     except layers_module.LayerReadError as exc:
         raise HTTPException(status_code=422, detail=f"Erro ao ler a camada '{layer_id}': {exc}") from exc
 

@@ -425,11 +425,11 @@ def _resolver_grupo(grupos: list[tuple[tuple[str, ...], dict]], slugs_pedidos: l
         for caminho, geojson in grupos:
             if not caminho:
                 return geojson
-        raise LayerNotFound(layer_id)
+        raise LayerNotFound(f"grupo raiz não encontrado no arquivo (id: {layer_id})")
     for caminho, geojson in grupos:
         if [_slug(p) for p in caminho] == slugs_pedidos:
             return geojson
-    raise LayerNotFound(layer_id)
+    raise LayerNotFound(f"sub-grupo/pasta não encontrado no arquivo (id: {layer_id})")
 
 
 def get_layer(layer_id: str) -> dict:
@@ -440,13 +440,24 @@ def get_layer(layer_id: str) -> dict:
         try:
             path = _decode_link_id(base_id)
         except Exception as exc:  # id malformado/adulterado
-            raise LayerNotFound(layer_id) from exc
+            raise LayerNotFound(f"id de camada inválido: {layer_id}") from exc
         if not path.is_file():
-            raise LayerNotFound(layer_id)
+            # Camada vinda de <NetworkLink> — o arquivo existia quando a
+            # árvore foi montada (senão nem apareceria na lista), mas não
+            # está mais acessível agora. Na prática isso quase sempre é
+            # uma pasta de rede (\\servidor\...) que caiu, foi desmapeada
+            # ou está sem permissão nesta máquina — não um bug do
+            # programa. Por isso a mensagem mostra o caminho de verdade,
+            # não o id em base64 (que não diz nada pra quem está usando).
+            raise LayerNotFound(
+                f"arquivo não encontrado: {path} — se for um caminho de rede "
+                "(começando com \\\\), confira se essa pasta está acessível "
+                "nesta máquina agora (rede/VPN conectada, permissão de acesso)"
+            )
     else:
         path = _find_source_file(base_id)
         if path is None:
-            raise LayerNotFound(layer_id)
+            raise LayerNotFound(f"camada '{base_id}' não encontrada em {settings.layers_dir}")
 
     try:
         grupos, _ = _grupos_e_links_do_arquivo(path)

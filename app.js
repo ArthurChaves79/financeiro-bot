@@ -15,6 +15,36 @@ function currentChartColors() {
   return darkModeQuery.matches ? CHART_COLORS_DARK : CHART_COLORS_LIGHT;
 }
 
+// Categoria reservada para as duas pernas de um pagamento de fatura de
+// cartão (dinheiro só mudando de lugar entre contas do próprio usuário) —
+// nunca entra em despesas/receitas do mês, orçamentos, tendência ou no
+// resumo enviado à IA, senão a mesma compra seria contada duas vezes.
+const CATEGORIA_TRANSFERENCIA = 'Pagamento de fatura';
+
+// Método Kakeibo: agrupa categorias em 4 grupos fixos para o resumo do
+// Relatório. "sem-grupo" (Não classificado) não é um grupo Kakeibo de
+// verdade, é o balde para categorias ainda não classificadas.
+const KAKEIBO_GRUPOS = [
+  { id: 'sobrevivencia', nome: 'Sobrevivência' },
+  { id: 'lazer', nome: 'Lazer' },
+  { id: 'cultura', nome: 'Cultura' },
+  { id: 'extra', nome: 'Extra' },
+];
+
+const DEFAULT_CATEGORIA_GRUPOS = {
+  'Alimentação': 'sobrevivencia',
+  'Transporte': 'sobrevivencia',
+  'Moradia': 'sobrevivencia',
+  'Saúde': 'sobrevivencia',
+  'Lazer': 'lazer',
+  'Educação': 'cultura',
+  'Outros': 'extra',
+};
+
+function contaPadraoUnica() {
+  return { id: 'principal', nome: 'Conta principal', tipo: 'conta' };
+}
+
 const balanceValue = document.getElementById('balance-value');
 const balanceDelta = document.getElementById('balance-delta');
 const receitasMesValue = document.getElementById('receitas-mes-value');
@@ -43,6 +73,37 @@ const dataInput = document.getElementById('data');
 const transacaoIdInput = document.getElementById('transacao-id');
 const transacaoDeleteBtn = document.getElementById('transacao-delete-btn');
 const transacaoCancelBtn = document.getElementById('transacao-cancel-btn');
+
+const extratoContaFilterEl = document.getElementById('extrato-conta-filter');
+const transacaoContaSelect = document.getElementById('transacao-conta');
+
+const contasEmpty = document.getElementById('contas-empty');
+const contaListEl = document.getElementById('conta-list');
+const addContaBtn = document.getElementById('add-conta-btn');
+const emptyContaBtn = document.getElementById('empty-conta-btn');
+
+const contaDialog = document.getElementById('conta-dialog');
+const contaForm = document.getElementById('conta-form');
+const contaDialogTitle = document.getElementById('conta-dialog-title');
+const contaNomeInput = document.getElementById('conta-nome');
+const contaTipoSelect = document.getElementById('conta-tipo');
+const contaIdInput = document.getElementById('conta-id');
+const contaDeleteBtn = document.getElementById('conta-delete-btn');
+const contaCancelBtn = document.getElementById('conta-cancel-btn');
+
+const pagamentoDialog = document.getElementById('pagamento-dialog');
+const pagamentoForm = document.getElementById('pagamento-form');
+const pagamentoCartaoNomeEl = document.getElementById('pagamento-cartao-nome');
+const pagamentoValorInput = document.getElementById('pagamento-valor');
+const pagamentoContaOrigemSelect = document.getElementById('pagamento-conta-origem');
+const pagamentoCartaoIdInput = document.getElementById('pagamento-cartao-id');
+const pagamentoCancelBtn = document.getElementById('pagamento-cancel-btn');
+
+const importExtratoContaSelect = document.getElementById('import-extrato-conta');
+const categoriaGruposListEl = document.getElementById('categoria-grupos-list');
+
+const kakeiboBarEl = document.getElementById('kakeibo-bar');
+const kakeiboLegendEl = document.getElementById('kakeibo-legend');
 
 const orcamentosEmpty = document.getElementById('orcamentos-empty');
 const orcamentoList = document.getElementById('orcamento-list');
@@ -95,15 +156,41 @@ function todayISO() {
   return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 10);
 }
 
+// Garante que `contas` tenha ao menos uma conta e que toda transação
+// aponte para uma conta existente (dados antigos, de antes das contas
+// existirem, ou um backup restaurado de uma versão anterior do app).
+function migrarContas(transacoes, contasBrutas) {
+  const contas = Array.isArray(contasBrutas) && contasBrutas.length > 0 ? contasBrutas : [contaPadraoUnica()];
+  const contaPadraoId = contas[0].id;
+  for (const t of transacoes) {
+    if (!t.contaId || !contas.some((c) => c.id === t.contaId)) {
+      t.contaId = contaPadraoId;
+    }
+  }
+  return contas;
+}
+
+function migrarCategoriaGrupos(brutos) {
+  return { ...DEFAULT_CATEGORIA_GRUPOS, ...(brutos && typeof brutos === 'object' ? brutos : {}) };
+}
+
 function loadData() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const transacoes = Array.isArray(parsed && parsed.transacoes) ? parsed.transacoes : [];
     return {
-      transacoes: Array.isArray(parsed && parsed.transacoes) ? parsed.transacoes : [],
+      transacoes,
       orcamentos: Array.isArray(parsed && parsed.orcamentos) ? parsed.orcamentos : [],
+      contas: migrarContas(transacoes, parsed && parsed.contas),
+      categoriaGrupos: migrarCategoriaGrupos(parsed && parsed.categoriaGrupos),
     };
   } catch {
-    return { transacoes: [], orcamentos: [] };
+    return {
+      transacoes: [],
+      orcamentos: [],
+      contas: [contaPadraoUnica()],
+      categoriaGrupos: migrarCategoriaGrupos(),
+    };
   }
 }
 
@@ -112,6 +199,11 @@ function saveData(data) {
 }
 
 let data = loadData();
+// A migração (contas/categoriaGrupos) acontece em memória em loadData(); persiste
+// já na primeira carga para não depender da primeira ação do usuário.
+saveData(data);
+let extratoContaFiltro = null; // null = todas as contas
+let ultimaContaUsada = data.contas[0].id;
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -136,11 +228,34 @@ function colorFor(categoria) {
   return colors[hash % colors.length];
 }
 
+function contaPorId(contaId) {
+  return data.contas.find((c) => c.id === contaId);
+}
+
+// Saldo em dinheiro: soma só as contas do tipo "conta" (corrente/poupança).
+// Cartões de crédito não entram aqui — eles têm uma dívida, não um saldo
+// (ver computeDividaCartao).
 function computeSaldo() {
-  return data.transacoes.reduce(
-    (sum, t) => sum + (t.tipo === 'entrada' ? t.valor : -t.valor),
-    0
-  );
+  return data.transacoes.reduce((sum, t) => {
+    const conta = contaPorId(t.contaId);
+    if (conta && conta.tipo === 'cartao') return sum;
+    return sum + (t.tipo === 'entrada' ? t.valor : -t.valor);
+  }, 0);
+}
+
+// Dívida atual de um cartão: compras (saída) menos pagamentos de fatura já
+// registrados nele (entrada). Nunca fica negativa na exibição — um valor
+// negativo aqui significaria fatura paga a mais.
+function computeDividaCartao(contaId) {
+  return data.transacoes
+    .filter((t) => t.contaId === contaId)
+    .reduce((sum, t) => sum + (t.tipo === 'saida' ? t.valor : -t.valor), 0);
+}
+
+function saldoDaConta(contaId) {
+  return data.transacoes
+    .filter((t) => t.contaId === contaId)
+    .reduce((sum, t) => sum + (t.tipo === 'entrada' ? t.valor : -t.valor), 0);
 }
 
 function gastosPorCategoriaNoMes(monthDate) {
@@ -149,6 +264,7 @@ function gastosPorCategoriaNoMes(monthDate) {
   const totals = {};
   for (const t of data.transacoes) {
     if (t.tipo !== 'saida') continue;
+    if (t.categoria === CATEGORIA_TRANSFERENCIA) continue;
     const d = new Date(`${t.data}T00:00:00`);
     if (d.getFullYear() !== y || d.getMonth() !== m) continue;
     totals[t.categoria] = (totals[t.categoria] || 0) + t.valor;
@@ -162,6 +278,7 @@ function totaisDoMes(monthDate) {
   let receitas = 0;
   let despesas = 0;
   for (const t of data.transacoes) {
+    if (t.categoria === CATEGORIA_TRANSFERENCIA) continue;
     const d = new Date(`${t.data}T00:00:00`);
     if (d.getFullYear() !== y || d.getMonth() !== m) continue;
     if (t.tipo === 'entrada') receitas += t.valor;
@@ -202,9 +319,26 @@ tabs.forEach((tab) => {
 // ==============================================
 // Extrato / Transações
 // ==============================================
+// Preenche um <select> com as contas cadastradas. Cartões aparecem com um
+// sufixo "(cartão)" para ficar claro que uma despesa ali vira dívida, não
+// saída de caixa imediata.
+function populateContaSelect(selectEl, selectedId) {
+  selectEl.innerHTML = '';
+  for (const c of data.contas) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.tipo === 'cartao' ? `${c.nome} (cartão)` : c.nome;
+    selectEl.appendChild(opt);
+  }
+  if (selectedId && data.contas.some((c) => c.id === selectedId)) {
+    selectEl.value = selectedId;
+  }
+}
+
 function openTransacaoDialog(transacao) {
   transacaoForm.reset();
   setTipo('saida');
+  populateContaSelect(transacaoContaSelect, transacao ? transacao.contaId : ultimaContaUsada);
 
   if (transacao) {
     transacaoDialogTitle.textContent = 'Editar transação';
@@ -262,7 +396,9 @@ transacaoForm.addEventListener('submit', (event) => {
     categoria,
     descricao: descricaoInput.value.trim(),
     data: dataInput.value,
+    contaId: transacaoContaSelect.value,
   };
+  ultimaContaUsada = payload.contaId;
 
   if (id) {
     const existing = data.transacoes.find((t) => t.id === id);
@@ -280,11 +416,40 @@ transacaoForm.addEventListener('submit', (event) => {
   render();
 });
 
-function renderExtrato() {
-  const transacoes = [...data.transacoes].sort((a, b) => {
-    if (a.data !== b.data) return b.data.localeCompare(a.data);
-    return (b.criadoEm || '').localeCompare(a.criadoEm || '');
+function renderExtratoContaFilter() {
+  extratoContaFilterEl.innerHTML = '';
+
+  const criarChip = (label, ativo, onClick) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = `conta-chip${ativo ? ' active' : ''}`;
+    chip.textContent = label;
+    chip.addEventListener('click', onClick);
+    extratoContaFilterEl.appendChild(chip);
+  };
+
+  criarChip('Todas', extratoContaFiltro === null, () => {
+    extratoContaFiltro = null;
+    renderExtrato();
   });
+
+  for (const conta of data.contas) {
+    criarChip(conta.nome, extratoContaFiltro === conta.id, () => {
+      extratoContaFiltro = conta.id;
+      renderExtrato();
+    });
+  }
+}
+
+function renderExtrato() {
+  renderExtratoContaFilter();
+
+  const transacoes = [...data.transacoes]
+    .filter((t) => extratoContaFiltro === null || t.contaId === extratoContaFiltro)
+    .sort((a, b) => {
+      if (a.data !== b.data) return b.data.localeCompare(a.data);
+      return (b.criadoEm || '').localeCompare(a.criadoEm || '');
+    });
 
   transacaoList.innerHTML = '';
   extratoEmpty.hidden = transacoes.length > 0;
@@ -323,7 +488,8 @@ function renderExtrato() {
     }
     const date = document.createElement('div');
     date.className = 'transacao-data';
-    date.textContent = formatDateShort(t.data);
+    const contaNome = contaPorId(t.contaId)?.nome || '';
+    date.textContent = contaNome ? `${formatDateShort(t.data)} · ${contaNome}` : formatDateShort(t.data);
     textos.appendChild(date);
 
     const info = document.createElement('div');
@@ -337,6 +503,191 @@ function renderExtrato() {
     li.append(info, valor);
     li.addEventListener('click', () => openTransacaoDialog(t));
     transacaoList.appendChild(li);
+  }
+}
+
+// ==============================================
+// Contas (bancos e cartões)
+// ==============================================
+function openContaDialog(conta) {
+  contaForm.reset();
+
+  if (conta) {
+    contaDialogTitle.textContent = 'Editar conta';
+    contaIdInput.value = conta.id;
+    contaNomeInput.value = conta.nome;
+    contaTipoSelect.value = conta.tipo;
+    contaDeleteBtn.hidden = false;
+  } else {
+    contaDialogTitle.textContent = 'Nova conta';
+    contaIdInput.value = '';
+    contaTipoSelect.value = 'conta';
+    contaDeleteBtn.hidden = true;
+  }
+
+  contaDialog.showModal();
+  contaNomeInput.focus();
+}
+
+addContaBtn.addEventListener('click', () => openContaDialog(null));
+emptyContaBtn.addEventListener('click', () => openContaDialog(null));
+contaCancelBtn.addEventListener('click', () => contaDialog.close());
+
+contaDeleteBtn.addEventListener('click', () => {
+  const id = contaIdInput.value;
+  if (!id) return;
+  if (data.contas.length <= 1) {
+    window.alert('Você precisa ter pelo menos uma conta.');
+    return;
+  }
+  const temTransacoes = data.transacoes.some((t) => t.contaId === id);
+  if (temTransacoes) {
+    const confirmado = window.confirm(
+      'Essa conta tem transações lançadas nela. Excluí-la também vai excluir todas as transações associadas. Continuar?'
+    );
+    if (!confirmado) return;
+    data.transacoes = data.transacoes.filter((t) => t.contaId !== id);
+  }
+  data.contas = data.contas.filter((c) => c.id !== id);
+  if (extratoContaFiltro === id) extratoContaFiltro = null;
+  if (ultimaContaUsada === id) ultimaContaUsada = data.contas[0].id;
+  saveData(data);
+  contaDialog.close();
+  render();
+});
+
+contaForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+
+  const nome = contaNomeInput.value.trim();
+  const tipo = contaTipoSelect.value;
+  if (!nome) return;
+
+  const id = contaIdInput.value;
+  if (id) {
+    const existing = data.contas.find((c) => c.id === id);
+    Object.assign(existing, { nome, tipo });
+  } else {
+    data.contas.push({ id: crypto.randomUUID(), nome, tipo });
+  }
+
+  saveData(data);
+  contaDialog.close();
+  render();
+});
+
+function openPagamentoDialog(cartaoConta) {
+  pagamentoForm.reset();
+  pagamentoCartaoIdInput.value = cartaoConta.id;
+  pagamentoCartaoNomeEl.textContent = `Cartão: ${cartaoConta.nome}`;
+
+  const divida = computeDividaCartao(cartaoConta.id);
+  pagamentoValorInput.value = divida > 0 ? divida.toFixed(2) : '';
+
+  pagamentoContaOrigemSelect.innerHTML = '';
+  const optNenhuma = document.createElement('option');
+  optNenhuma.value = '';
+  optNenhuma.textContent = 'Não registrar saída em outra conta';
+  pagamentoContaOrigemSelect.appendChild(optNenhuma);
+  for (const c of data.contas) {
+    if (c.tipo === 'cartao') continue;
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.nome;
+    pagamentoContaOrigemSelect.appendChild(opt);
+  }
+
+  pagamentoDialog.showModal();
+  pagamentoValorInput.focus();
+}
+
+pagamentoCancelBtn.addEventListener('click', () => pagamentoDialog.close());
+
+pagamentoForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+
+  const cartaoId = pagamentoCartaoIdInput.value;
+  const valor = parseFloat(pagamentoValorInput.value);
+  const contaOrigemId = pagamentoContaOrigemSelect.value;
+  if (!cartaoId || !valor || valor <= 0) return;
+
+  const criadoEm = new Date().toISOString();
+  const hoje = todayISO();
+
+  data.transacoes.push({
+    id: crypto.randomUUID(),
+    criadoEm,
+    tipo: 'entrada',
+    valor,
+    categoria: CATEGORIA_TRANSFERENCIA,
+    descricao: 'Pagamento de fatura',
+    data: hoje,
+    contaId: cartaoId,
+  });
+
+  if (contaOrigemId) {
+    data.transacoes.push({
+      id: crypto.randomUUID(),
+      criadoEm,
+      tipo: 'saida',
+      valor,
+      categoria: CATEGORIA_TRANSFERENCIA,
+      descricao: 'Pagamento de fatura',
+      data: hoje,
+      contaId: contaOrigemId,
+    });
+  }
+
+  saveData(data);
+  pagamentoDialog.close();
+  render();
+});
+
+function renderContas() {
+  contaListEl.innerHTML = '';
+  contasEmpty.hidden = data.contas.length > 0;
+
+  for (const conta of data.contas) {
+    const li = document.createElement('li');
+    li.className = 'conta-card';
+
+    const header = document.createElement('div');
+    header.className = 'conta-header';
+    const nome = document.createElement('span');
+    nome.className = 'conta-nome';
+    nome.textContent = conta.nome;
+    const badge = document.createElement('span');
+    badge.className = 'conta-tipo-badge';
+    badge.textContent = conta.tipo === 'cartao' ? 'Cartão' : 'Conta';
+    header.append(nome, badge);
+
+    const valorEl = document.createElement('div');
+    if (conta.tipo === 'cartao') {
+      const divida = computeDividaCartao(conta.id);
+      valorEl.className = `conta-valor${divida > 0 ? ' divida' : ''}`;
+      valorEl.textContent = divida > 0 ? `Dívida atual: ${formatCurrency(divida)}` : 'Sem dívida';
+    } else {
+      const saldoConta = saldoDaConta(conta.id);
+      valorEl.className = `conta-valor${saldoConta < 0 ? ' divida' : ''}`;
+      valorEl.textContent = `Saldo: ${formatCurrency(saldoConta)}`;
+    }
+
+    li.append(header, valorEl);
+
+    if (conta.tipo === 'cartao' && computeDividaCartao(conta.id) > 0) {
+      const pagarBtn = document.createElement('button');
+      pagarBtn.type = 'button';
+      pagarBtn.className = 'secondary-btn full-width';
+      pagarBtn.textContent = 'Registrar pagamento da fatura';
+      pagarBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openPagamentoDialog(conta);
+      });
+      li.appendChild(pagarBtn);
+    }
+
+    li.addEventListener('click', () => openContaDialog(conta));
+    contaListEl.appendChild(li);
   }
 }
 
@@ -465,6 +816,8 @@ function renderRelatorio() {
   relatorioContent.hidden = entries.length === 0;
   if (entries.length === 0) return;
 
+  renderKakeiboBar(entries, total);
+
   const ctx = relatorioChart.getContext('2d');
   const size = relatorioChart.width;
   const cx = size / 2;
@@ -507,6 +860,125 @@ function renderRelatorio() {
   }
 }
 
+// Resumo do mês agrupado no método Kakeibo (Sobrevivência / Lazer / Cultura
+// / Extra), a partir das mesmas entradas por categoria já calculadas para a
+// pizza — categorias sem grupo definido caem em "Não classificado".
+function renderKakeiboBar(entries, total) {
+  const porGrupo = {};
+  for (const [categoria, valor] of entries) {
+    const grupoId = data.categoriaGrupos[categoria] || 'sem-grupo';
+    porGrupo[grupoId] = (porGrupo[grupoId] || 0) + valor;
+  }
+
+  const colors = currentChartColors();
+  const corPorGrupo = {
+    sobrevivencia: colors[0],
+    lazer: colors[1],
+    cultura: colors[2],
+    extra: colors[3],
+    'sem-grupo': 'var(--text-faint)',
+  };
+  const gruposExibidos = [...KAKEIBO_GRUPOS, { id: 'sem-grupo', nome: 'Não classificado' }];
+
+  kakeiboBarEl.innerHTML = '';
+  kakeiboLegendEl.innerHTML = '';
+
+  for (const grupo of gruposExibidos) {
+    const valor = porGrupo[grupo.id] || 0;
+    if (valor <= 0) continue;
+    const pct = (valor / total) * 100;
+
+    const seg = document.createElement('div');
+    seg.className = 'kakeibo-segment';
+    seg.style.width = `${pct}%`;
+    seg.style.background = corPorGrupo[grupo.id];
+    kakeiboBarEl.appendChild(seg);
+
+    const li = document.createElement('li');
+    li.className = 'legend-item';
+    const dot = document.createElement('span');
+    dot.className = 'legend-dot';
+    dot.style.background = corPorGrupo[grupo.id];
+    const label = document.createElement('span');
+    label.className = 'legend-label';
+    label.textContent = grupo.nome;
+    const pctEl = document.createElement('span');
+    pctEl.className = 'legend-pct';
+    pctEl.textContent = `${formatCurrency(valor)} (${pct.toFixed(0)}%)`;
+    li.append(dot, label, pctEl);
+    kakeiboLegendEl.appendChild(li);
+  }
+}
+
+// ==============================================
+// Categorias e grupos (método Kakeibo)
+// ==============================================
+function getAllCategoriasConhecidas() {
+  const set = new Set(Object.keys(DEFAULT_CATEGORIA_GRUPOS));
+  for (const t of data.transacoes) {
+    if (t.categoria && t.categoria !== 'A categorizar' && t.categoria !== CATEGORIA_TRANSFERENCIA) {
+      set.add(t.categoria);
+    }
+  }
+  for (const o of data.orcamentos) {
+    if (o.categoria) set.add(o.categoria);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function renderCategoriaGrupos() {
+  categoriaGruposListEl.innerHTML = '';
+  const categorias = getAllCategoriasConhecidas();
+
+  if (categorias.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'settings-hint';
+    p.textContent = 'Nenhuma categoria ainda.';
+    categoriaGruposListEl.appendChild(p);
+    return;
+  }
+
+  for (const categoria of categorias) {
+    const row = document.createElement('div');
+    row.className = 'categoria-grupo-row';
+
+    const dot = document.createElement('span');
+    dot.className = 'categoria-dot';
+    dot.style.background = colorFor(categoria);
+
+    const nome = document.createElement('span');
+    nome.className = 'categoria-grupo-nome';
+    nome.textContent = categoria;
+
+    const select = document.createElement('select');
+    select.className = 'categoria-grupo-select';
+    const optSem = document.createElement('option');
+    optSem.value = '';
+    optSem.textContent = 'Sem grupo';
+    select.appendChild(optSem);
+    for (const grupo of KAKEIBO_GRUPOS) {
+      const opt = document.createElement('option');
+      opt.value = grupo.id;
+      opt.textContent = grupo.nome;
+      select.appendChild(opt);
+    }
+    select.value = data.categoriaGrupos[categoria] || '';
+
+    select.addEventListener('change', () => {
+      if (select.value) {
+        data.categoriaGrupos[categoria] = select.value;
+      } else {
+        delete data.categoriaGrupos[categoria];
+      }
+      saveData(data);
+      renderRelatorio();
+    });
+
+    row.append(dot, nome, select);
+    categoriaGruposListEl.appendChild(row);
+  }
+}
+
 // ==============================================
 // Backup: exportar / importar / apagar
 // ==============================================
@@ -515,6 +987,8 @@ settingsBtn.addEventListener('click', () => {
   importInput.value = '';
   importExtratoStatus.hidden = true;
   importExtratoInput.value = '';
+  populateContaSelect(importExtratoContaSelect, ultimaContaUsada);
+  renderCategoriaGrupos();
   apiKeyInput.value = '';
   apiKeyStatus.hidden = false;
   apiKeyStatus.classList.remove('error');
@@ -555,7 +1029,14 @@ importInput.addEventListener('change', () => {
         importInput.value = '';
         return;
       }
-      data = { transacoes: parsed.transacoes, orcamentos: parsed.orcamentos };
+      data = {
+        transacoes: parsed.transacoes,
+        orcamentos: parsed.orcamentos,
+        contas: migrarContas(parsed.transacoes, parsed.contas),
+        categoriaGrupos: migrarCategoriaGrupos(parsed.categoriaGrupos),
+      };
+      extratoContaFiltro = null;
+      ultimaContaUsada = data.contas[0].id;
       saveData(data);
       render();
       importStatus.hidden = false;
@@ -763,15 +1244,25 @@ function showImportExtratoStatus(text, isError) {
   importExtratoStatus.classList.toggle('error', !!isError);
 }
 
+// A conta faz parte da identidade da transação: importar o mesmo extrato em
+// duas contas diferentes (por engano ou de propósito) não deve ser tratado
+// como duplicata de si mesmo.
 function transacaoFingerprint(t) {
   return t.fitid
-    ? `fit:${t.fitid}`
-    : `fp:${t.data}|${t.valor.toFixed(2)}|${t.tipo}|${(t.descricao || '').trim()}`;
+    ? `fit:${t.contaId}:${t.fitid}`
+    : `fp:${t.contaId}:${t.data}|${t.valor.toFixed(2)}|${t.tipo}|${(t.descricao || '').trim()}`;
 }
 
 importExtratoInput.addEventListener('change', () => {
   const file = importExtratoInput.files[0];
   if (!file) return;
+
+  const contaId = importExtratoContaSelect.value;
+  if (!contaId) {
+    showImportExtratoStatus('Cadastre uma conta em "Contas" antes de importar um extrato.', true);
+    importExtratoInput.value = '';
+    return;
+  }
 
   const reader = new FileReader();
   reader.onload = () => {
@@ -794,7 +1285,7 @@ importExtratoInput.addEventListener('change', () => {
     let skipped = 0;
 
     for (const t of parsed) {
-      const key = transacaoFingerprint(t);
+      const key = transacaoFingerprint({ ...t, contaId });
       if (existingFingerprints.has(key) || seenInBatch.has(key)) {
         skipped++;
         continue;
@@ -808,11 +1299,13 @@ importExtratoInput.addEventListener('change', () => {
         categoria: 'A categorizar',
         descricao: t.descricao || '',
         data: t.data,
+        contaId,
         fitid: t.fitid || undefined,
       });
       added++;
     }
 
+    ultimaContaUsada = contaId;
     saveData(data);
     render();
     const addedText =
@@ -890,6 +1383,18 @@ function buildResumoParaIA() {
     for (const o of data.orcamentos) {
       const gasto = gastosPorCategoria[o.categoria] || 0;
       linhas.push(`- ${o.categoria}: gastou ${formatCurrency(gasto)} de um limite de ${formatCurrency(o.limite)}`);
+    }
+  }
+
+  if (data.contas.length > 1) {
+    linhas.push('');
+    linhas.push('Contas e cartões:');
+    for (const c of data.contas) {
+      if (c.tipo === 'cartao') {
+        linhas.push(`- ${c.nome} (cartão de crédito): dívida atual ${formatCurrency(computeDividaCartao(c.id))}`);
+      } else {
+        linhas.push(`- ${c.nome} (conta): saldo ${formatCurrency(saldoDaConta(c.id))}`);
+      }
     }
   }
 
@@ -1008,7 +1513,14 @@ wipeBtn.addEventListener('click', () => {
     'Tem certeza? Isso vai apagar todas as transações e orçamentos deste celular. Essa ação não pode ser desfeita.'
   );
   if (!confirmado) return;
-  data = { transacoes: [], orcamentos: [] };
+  data = {
+    transacoes: [],
+    orcamentos: [],
+    contas: [contaPadraoUnica()],
+    categoriaGrupos: migrarCategoriaGrupos(),
+  };
+  extratoContaFiltro = null;
+  ultimaContaUsada = data.contas[0].id;
   saveData(data);
   render();
   settingsDialog.close();
@@ -1102,6 +1614,7 @@ function renderTrend() {
 function render() {
   renderStats();
   renderExtrato();
+  renderContas();
   renderOrcamentos();
   renderRelatorio();
 }

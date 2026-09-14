@@ -13,6 +13,7 @@ Substitui o antigo bot de WhatsApp por um app que funciona direto no navegador d
 - Funciona offline (Service Worker) e pode ser instalado como app no celular
 - Os dados ficam salvos localmente no navegador (localStorage) — não saem do seu aparelho
 - Backup: exportar todos os dados em um arquivo `.json` e importá-los depois (útil ao trocar de celular ou por segurança)
+- Importar extrato bancário (`.ofx`/`.qfx` do internet banking, ou `.csv`) para trazer as entradas e saídas automaticamente, sem digitar uma por uma
 
 ## Como usar
 
@@ -33,6 +34,17 @@ No menu de configurações (ícone de engrenagem):
 - **Exportar backup**: baixa um arquivo `financeiro-backup-AAAA-MM-DD.json` com todas as transações e orçamentos.
 - **Importar backup**: escolhe um arquivo `.json` exportado anteriormente e substitui os dados atuais por ele.
 - **Apagar todos os dados**: limpa tudo o que está salvo neste celular.
+
+### Importar extrato do banco
+
+No menu de configurações, em "Importar extrato bancário", escolha o arquivo baixado do internet banking:
+
+- **`.ofx`/`.qfx`**: formato padrão exportado pela maioria dos bancos (ex. Bradesco).
+- **`.csv`**: planilha com colunas de data, valor e descrição (ex. exportação do Nubank). O separador (`,` ou `;`) e os nomes das colunas são detectados automaticamente.
+
+As transações importadas entram com a categoria "A categorizar" — toque em cada uma para ajustar a categoria depois. Reimportar o mesmo período não duplica lançamentos: o app identifica transações já importadas (pelo identificador do OFX, ou por data + valor + descrição) e ignora as repetidas.
+
+> Isso não é sincronização automática via Open Finance — cada banco tem sua própria forma de exportar o extrato (app ou internet banking), então é preciso baixar o arquivo manualmente sempre que quiser atualizar.
 
 ## Estrutura
 

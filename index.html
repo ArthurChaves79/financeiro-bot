@@ -90,6 +90,11 @@
       <canvas id="relatorio-chart" width="280" height="280"></canvas>
       <ul id="relatorio-legend" class="relatorio-legend"></ul>
     </div>
+
+    <div class="advisor-section">
+      <button id="advisor-btn" class="secondary-btn full-width">🤖 Analisar com IA</button>
+      <div id="advisor-result" class="advisor-result" hidden></div>
+    </div>
   </section>
 </main>
 
@@ -190,6 +195,19 @@
       <input type="file" id="import-extrato-input" accept=".ofx,.qfx,.csv,text/csv,application/x-ofx" />
     </label>
     <p id="import-extrato-status" class="import-status" hidden></p>
+
+    <hr class="settings-divider" />
+
+    <p class="settings-hint">Consultor com IA: informe sua própria chave da API da Anthropic (gerada em <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>) para usar o botão "Analisar com IA" no Relatório. A chave fica salva só neste celular, nunca entra no backup, e cada análise é enviada direto para a Anthropic quando você pede — não é automático.</p>
+    <label class="field">
+      <span>Chave da API (Anthropic)</span>
+      <input type="password" id="api-key-input" name="apiKey" autocomplete="off" placeholder="sk-ant-..." />
+    </label>
+    <div class="dialog-actions">
+      <button type="button" id="api-key-clear-btn" class="ghost-btn">Remover chave</button>
+      <button type="button" id="api-key-save-btn" class="secondary-btn">Salvar chave</button>
+    </div>
+    <p id="api-key-status" class="import-status" hidden></p>
 
     <hr class="settings-divider" />
 

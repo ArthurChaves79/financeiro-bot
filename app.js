@@ -1,11 +1,27 @@
 const STORAGE_KEY = 'meuFinanceiro.dados';
 
-const CHART_COLORS = [
-  '#c9a227', '#3d7a5c', '#7c2d3a', '#2c5c8a',
-  '#8a5a2b', '#5c3a5c', '#3d5c52', '#a4342c',
+// Paleta categórica validada para segurança de daltonismo (mesma ordem fixa
+// nos dois modos, apenas os tons trocam entre claro/escuro).
+const CHART_COLORS_LIGHT = [
+  '#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+  '#e87ba4', '#008300', '#4a3aa7', '#e34948',
 ];
+const CHART_COLORS_DARK = [
+  '#3987e5', '#d95926', '#199e70', '#c98500',
+  '#d55181', '#008300', '#9085e9', '#e66767',
+];
+const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+function currentChartColors() {
+  return darkModeQuery.matches ? CHART_COLORS_DARK : CHART_COLORS_LIGHT;
+}
 
 const balanceValue = document.getElementById('balance-value');
+const balanceDelta = document.getElementById('balance-delta');
+const receitasMesValue = document.getElementById('receitas-mes-value');
+const receitasMesDelta = document.getElementById('receitas-mes-delta');
+const despesasMesValue = document.getElementById('despesas-mes-value');
+const despesasMesDelta = document.getElementById('despesas-mes-delta');
+const trendChart = document.getElementById('trend-chart');
 
 const tabs = document.querySelectorAll('.tab');
 const views = document.querySelectorAll('.view');
@@ -56,6 +72,8 @@ const settingsCloseBtn = document.getElementById('settings-close-btn');
 const exportBtn = document.getElementById('export-btn');
 const importInput = document.getElementById('import-input');
 const importStatus = document.getElementById('import-status');
+const importExtratoInput = document.getElementById('import-extrato-input');
+const importExtratoStatus = document.getElementById('import-extrato-status');
 const wipeBtn = document.getElementById('wipe-btn');
 
 let currentView = 'extrato';
@@ -104,11 +122,12 @@ const MONTH_NAMES = [
 ];
 
 function colorFor(categoria) {
+  const colors = currentChartColors();
   let hash = 0;
   for (let i = 0; i < categoria.length; i++) {
     hash = (hash * 31 + categoria.charCodeAt(i)) >>> 0;
   }
-  return CHART_COLORS[hash % CHART_COLORS.length];
+  return colors[hash % colors.length];
 }
 
 function computeSaldo() {
@@ -129,6 +148,32 @@ function gastosPorCategoriaNoMes(monthDate) {
     totals[t.categoria] = (totals[t.categoria] || 0) + t.valor;
   }
   return totals;
+}
+
+function totaisDoMes(monthDate) {
+  const y = monthDate.getFullYear();
+  const m = monthDate.getMonth();
+  let receitas = 0;
+  let despesas = 0;
+  for (const t of data.transacoes) {
+    const d = new Date(`${t.data}T00:00:00`);
+    if (d.getFullYear() !== y || d.getMonth() !== m) continue;
+    if (t.tipo === 'entrada') receitas += t.valor;
+    else despesas += t.valor;
+  }
+  return { receitas, despesas };
+}
+
+function formatSignedCurrency(value) {
+  const sinal = value >= 0 ? '+' : '−';
+  return `${sinal} ${formatCurrency(Math.abs(value))}`;
+}
+
+// Retorna a variação percentual de curr sobre prev, ou null quando não há
+// base de comparação (mês anterior sem nenhum valor).
+function pctChange(curr, prev) {
+  if (prev === 0) return null;
+  return ((curr - prev) / prev) * 100;
 }
 
 // ==============================================
@@ -253,22 +298,31 @@ function renderExtrato() {
     const li = document.createElement('li');
     li.className = 'transacao-card';
 
-    const info = document.createElement('div');
-    info.className = 'transacao-info';
+    const dot = document.createElement('span');
+    dot.className = 'categoria-dot';
+    dot.style.background = colorFor(t.categoria);
+
+    const textos = document.createElement('div');
+    textos.className = 'transacao-textos';
     const cat = document.createElement('div');
     cat.className = 'transacao-categoria';
+    if (t.categoria === 'A categorizar') cat.classList.add('pendente');
     cat.textContent = t.categoria;
-    info.appendChild(cat);
+    textos.appendChild(cat);
     if (t.descricao) {
       const desc = document.createElement('div');
       desc.className = 'transacao-descricao';
       desc.textContent = t.descricao;
-      info.appendChild(desc);
+      textos.appendChild(desc);
     }
     const date = document.createElement('div');
     date.className = 'transacao-data';
     date.textContent = formatDateShort(t.data);
-    info.appendChild(date);
+    textos.appendChild(date);
+
+    const info = document.createElement('div');
+    info.className = 'transacao-info';
+    info.append(dot, textos);
 
     const valor = document.createElement('div');
     valor.className = `transacao-valor ${t.tipo}`;
@@ -356,12 +410,16 @@ function renderOrcamentos() {
 
     const header = document.createElement('div');
     header.className = 'orcamento-header';
+    const dot = document.createElement('span');
+    dot.className = 'categoria-dot';
+    dot.style.background = colorFor(o.categoria);
     const cat = document.createElement('span');
+    cat.className = 'orcamento-nome';
     cat.textContent = o.categoria;
     const valores = document.createElement('span');
     valores.className = `orcamento-valores ${status}`;
     valores.textContent = `${formatCurrency(gasto)} / ${formatCurrency(o.limite)}`;
-    header.append(cat, valores);
+    header.append(dot, cat, valores);
 
     const bar = document.createElement('div');
     bar.className = 'progress-bar';
@@ -390,6 +448,7 @@ nextMonthBtn.addEventListener('click', () => {
 });
 
 function renderRelatorio() {
+  renderTrend();
   monthLabel.textContent = `${MONTH_NAMES[reportMonth.getMonth()]} ${reportMonth.getFullYear()}`;
 
   const totals = gastosPorCategoriaNoMes(reportMonth);
@@ -448,6 +507,8 @@ function renderRelatorio() {
 settingsBtn.addEventListener('click', () => {
   importStatus.hidden = true;
   importInput.value = '';
+  importExtratoStatus.hidden = true;
+  importExtratoInput.value = '';
   settingsDialog.showModal();
 });
 settingsCloseBtn.addEventListener('click', () => settingsDialog.close());
@@ -499,6 +560,209 @@ importInput.addEventListener('change', () => {
   reader.readAsText(file);
 });
 
+// ------------------------------------------------
+// Importar extrato bancário (.ofx/.qfx ou .csv)
+// ------------------------------------------------
+function normalizeText(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function ofxDateToISO(raw) {
+  const m = String(raw || '').match(/^(\d{4})(\d{2})(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+function csvDateToISO(raw) {
+  const s = String(raw || '').trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return null;
+}
+
+function parseLocaleNumber(raw) {
+  let s = String(raw || '').trim();
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  if (hasComma && hasDot) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma && !hasDot) {
+    s = s.replace(',', '.');
+  }
+  return parseFloat(s);
+}
+
+function parseOFX(text) {
+  const blocks = text.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) || [];
+  const field = (block, tag) => {
+    const m = block.match(new RegExp(`<${tag}>([^<\r\n]*)`, 'i'));
+    return m ? m[1].trim() : '';
+  };
+  return blocks
+    .map((block) => {
+      const dataISO = ofxDateToISO(field(block, 'DTPOSTED'));
+      const valor = parseFloat(field(block, 'TRNAMT'));
+      const descricao = field(block, 'MEMO') || field(block, 'NAME');
+      const fitid = field(block, 'FITID') || null;
+      return {
+        data: dataISO,
+        valor: Math.abs(valor),
+        tipo: valor < 0 ? 'saida' : 'entrada',
+        descricao,
+        fitid,
+      };
+    })
+    .filter((t) => t.data && Number.isFinite(t.valor) && t.valor > 0);
+}
+
+function splitCSVLine(line, delimiter) {
+  const result = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === delimiter) {
+      result.push(cur);
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim() !== '');
+  if (lines.length < 2) return [];
+
+  const semiCount = (lines[0].match(/;/g) || []).length;
+  const commaCount = (lines[0].match(/,/g) || []).length;
+  const delimiter = semiCount > commaCount ? ';' : ',';
+
+  const headers = splitCSVLine(lines[0], delimiter).map(normalizeText);
+  const dateIdx = headers.findIndex((h) => ['data', 'date'].includes(h));
+  const valueIdx = headers.findIndex((h) =>
+    ['valor', 'value', 'amount', 'montante'].includes(h)
+  );
+  const descIdx = headers.findIndex((h) =>
+    ['descricao', 'description', 'title', 'memo', 'historico', 'lancamento', 'categoria'].includes(h)
+  );
+  if (dateIdx === -1 || valueIdx === -1) return [];
+
+  return lines
+    .slice(1)
+    .map((line) => splitCSVLine(line, delimiter))
+    .map((cols) => {
+      const dataISO = csvDateToISO(cols[dateIdx]);
+      const valor = parseLocaleNumber(cols[valueIdx]);
+      const descricao = descIdx !== -1 ? String(cols[descIdx] || '').trim() : '';
+      return {
+        data: dataISO,
+        valor: Math.abs(valor),
+        tipo: valor < 0 ? 'saida' : 'entrada',
+        descricao,
+        fitid: null,
+      };
+    })
+    .filter((t) => t.data && Number.isFinite(t.valor) && t.valor > 0);
+}
+
+function showImportExtratoStatus(text, isError) {
+  importExtratoStatus.hidden = false;
+  importExtratoStatus.textContent = text;
+  importExtratoStatus.classList.toggle('error', !!isError);
+}
+
+function transacaoFingerprint(t) {
+  return t.fitid
+    ? `fit:${t.fitid}`
+    : `fp:${t.data}|${t.valor.toFixed(2)}|${t.tipo}|${(t.descricao || '').trim()}`;
+}
+
+importExtratoInput.addEventListener('change', () => {
+  const file = importExtratoInput.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result);
+    const isOFX = /\.(ofx|qfx)$/i.test(file.name) || /<OFX>/i.test(text);
+    const parsed = isOFX ? parseOFX(text) : parseCSV(text);
+
+    if (!parsed.length) {
+      showImportExtratoStatus(
+        'Não foi possível encontrar transações neste arquivo. Verifique se é um .ofx/.qfx do internet banking ou um .csv com colunas de data, valor e descrição.',
+        true
+      );
+      importExtratoInput.value = '';
+      return;
+    }
+
+    const existingFingerprints = new Set(data.transacoes.map(transacaoFingerprint));
+    const seenInBatch = new Set();
+    let added = 0;
+    let skipped = 0;
+
+    for (const t of parsed) {
+      const key = transacaoFingerprint(t);
+      if (existingFingerprints.has(key) || seenInBatch.has(key)) {
+        skipped++;
+        continue;
+      }
+      seenInBatch.add(key);
+      data.transacoes.push({
+        id: crypto.randomUUID(),
+        criadoEm: new Date().toISOString(),
+        tipo: t.tipo,
+        valor: t.valor,
+        categoria: 'A categorizar',
+        descricao: t.descricao || '',
+        data: t.data,
+        fitid: t.fitid || undefined,
+      });
+      added++;
+    }
+
+    saveData(data);
+    render();
+    const addedText =
+      added === 1 ? '1 transação importada.' : `${added} transações importadas.`;
+    const skippedText =
+      skipped === 0
+        ? ''
+        : skipped === 1
+        ? ' 1 já existia e foi ignorada.'
+        : ` ${skipped} já existiam e foram ignoradas.`;
+    showImportExtratoStatus(
+      added > 0
+        ? addedText + skippedText
+        : `Nenhuma transação nova: todas as ${skipped} já tinham sido importadas antes.`,
+      false
+    );
+    importExtratoInput.value = '';
+  };
+  reader.readAsText(file);
+});
+
 wipeBtn.addEventListener('click', () => {
   const confirmado = window.confirm(
     'Tem certeza? Isso vai apagar todas as transações e orçamentos deste celular. Essa ação não pode ser desfeita.'
@@ -511,15 +775,98 @@ wipeBtn.addEventListener('click', () => {
 });
 
 // ==============================================
+// Estatísticas (saldo, receitas/despesas do mês e comparação)
+// ==============================================
+function setDeltaText(el, pct, upIsGood) {
+  if (pct === null) {
+    el.textContent = '';
+    el.className = 'stat-delta';
+    return;
+  }
+  if (pct === 0) {
+    el.textContent = 'Igual ao mês passado';
+    el.className = 'stat-delta';
+    return;
+  }
+  const isUp = pct > 0;
+  const isGood = isUp === upIsGood;
+  const arrow = isUp ? '▲' : '▼';
+  el.textContent = `${arrow} ${Math.abs(pct).toFixed(0)}% vs. mês passado`;
+  el.className = `stat-delta ${isGood ? 'up' : 'down'}`;
+}
+
+function renderStats() {
+  const saldo = computeSaldo();
+  balanceValue.textContent = formatCurrency(saldo);
+  balanceValue.classList.toggle('negative', saldo < 0);
+
+  const now = new Date();
+  const mesAtual = totaisDoMes(now);
+  const mesAnterior = totaisDoMes(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const netMes = mesAtual.receitas - mesAtual.despesas;
+
+  balanceDelta.textContent = `${formatSignedCurrency(netMes)} este mês`;
+  balanceDelta.className = `stat-delta${netMes > 0 ? ' up' : netMes < 0 ? ' down' : ''}`;
+
+  receitasMesValue.textContent = formatCurrency(mesAtual.receitas);
+  setDeltaText(receitasMesDelta, pctChange(mesAtual.receitas, mesAnterior.receitas), true);
+
+  despesasMesValue.textContent = formatCurrency(mesAtual.despesas);
+  setDeltaText(despesasMesDelta, pctChange(mesAtual.despesas, mesAnterior.despesas), false);
+}
+
+// ==============================================
+// Tendência: despesas nos últimos 6 meses
+// ==============================================
+function renderTrend() {
+  const now = new Date();
+  const meses = [];
+  for (let i = 5; i >= 0; i--) {
+    meses.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
+  }
+  const totais = meses.map((m) => totaisDoMes(m).despesas);
+  const max = Math.max(...totais, 1);
+
+  trendChart.innerHTML = '';
+  meses.forEach((m, i) => {
+    const despesas = totais[i];
+    const isCurrent = i === meses.length - 1;
+
+    const col = document.createElement('div');
+    col.className = 'trend-col';
+
+    const value = document.createElement('span');
+    value.className = 'trend-value';
+    value.textContent = despesas.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      maximumFractionDigits: 0,
+    });
+
+    const bar = document.createElement('div');
+    bar.className = `trend-bar${isCurrent ? ' current' : ''}`;
+    bar.style.height = `${(despesas / max) * 100}%`;
+
+    const label = document.createElement('span');
+    label.className = 'trend-label';
+    label.textContent = MONTH_NAMES[m.getMonth()].slice(0, 3);
+
+    col.append(value, bar, label);
+    trendChart.appendChild(col);
+  });
+}
+
+// ==============================================
 // Render geral
 // ==============================================
 function render() {
-  balanceValue.textContent = formatCurrency(computeSaldo());
-  balanceValue.classList.toggle('negative', computeSaldo() < 0);
+  renderStats();
   renderExtrato();
   renderOrcamentos();
   renderRelatorio();
 }
+
+darkModeQuery.addEventListener('change', render);
 
 render();
 

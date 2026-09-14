@@ -14,6 +14,7 @@ Substitui o antigo bot de WhatsApp por um app que funciona direto no navegador d
 - Os dados ficam salvos localmente no navegador (localStorage) — não saem do seu aparelho
 - Backup: exportar todos os dados em um arquivo `.json` e importá-los depois (útil ao trocar de celular ou por segurança)
 - Importar extrato bancário (`.ofx`/`.qfx` do internet banking, ou `.csv`) para trazer as entradas e saídas automaticamente, sem digitar uma por uma
+- Consultor com IA (opcional): um botão "Analisar com IA" no Relatório que dá um diagnóstico do mês e sugestões de economia com base nos seus dados
 
 ## Como usar
 
@@ -45,6 +46,21 @@ No menu de configurações, em "Importar extrato bancário", escolha o arquivo b
 As transações importadas entram com a categoria "A categorizar" — toque em cada uma para ajustar a categoria depois. Reimportar o mesmo período não duplica lançamentos: o app identifica transações já importadas (pelo identificador do OFX, ou por data + valor + descrição) e ignora as repetidas.
 
 > Isso não é sincronização automática via Open Finance — cada banco tem sua própria forma de exportar o extrato (app ou internet banking), então é preciso baixar o arquivo manualmente sempre que quiser atualizar.
+
+### Consultor com IA
+
+Na aba **Relatório**, o botão "Analisar com IA" envia um resumo do seu mês (saldo, receitas, despesas por categoria, orçamentos e a evolução dos últimos 6 meses — nunca a lista de transações inteira) para a API da Anthropic (Claude) e mostra um diagnóstico curto com pontos de atenção e sugestões de economia.
+
+Como configurar:
+
+1. Gere sua própria chave em [console.anthropic.com](https://console.anthropic.com) (é uma conta separada do app, cobra por uso — uma análise custa uma fração de centavo).
+2. Cole a chave em Configurações ⚙ → "Chave da API (Anthropic)" → Salvar chave.
+
+Detalhes importantes:
+
+- A chave fica salva só neste celular (`localStorage`), **nunca** é incluída no backup `.json`.
+- Nada é enviado automaticamente — só quando você toca em "Analisar com IA".
+- O app chama a API da Anthropic diretamente do navegador (sem servidor próprio). Isso expõe a chave a quem tiver acesso ao seu celular/navegador — mesmo risco de uma senha salva no navegador. Não compartilhe seu celular com essa chave configurada, nem reuse uma chave "cara" de produção aqui.
 
 ## Estrutura
 

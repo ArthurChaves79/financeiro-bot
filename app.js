@@ -74,6 +74,12 @@ const importInput = document.getElementById('import-input');
 const importStatus = document.getElementById('import-status');
 const importExtratoInput = document.getElementById('import-extrato-input');
 const importExtratoStatus = document.getElementById('import-extrato-status');
+const apiKeyInput = document.getElementById('api-key-input');
+const apiKeySaveBtn = document.getElementById('api-key-save-btn');
+const apiKeyClearBtn = document.getElementById('api-key-clear-btn');
+const apiKeyStatus = document.getElementById('api-key-status');
+const advisorBtn = document.getElementById('advisor-btn');
+const advisorResult = document.getElementById('advisor-result');
 const wipeBtn = document.getElementById('wipe-btn');
 
 let currentView = 'extrato';
@@ -509,6 +515,12 @@ settingsBtn.addEventListener('click', () => {
   importInput.value = '';
   importExtratoStatus.hidden = true;
   importExtratoInput.value = '';
+  apiKeyInput.value = '';
+  apiKeyStatus.hidden = false;
+  apiKeyStatus.classList.remove('error');
+  apiKeyStatus.textContent = getApiKey()
+    ? 'Chave configurada neste celular.'
+    : 'Nenhuma chave configurada — o consultor com IA fica indisponível até você adicionar uma.';
   settingsDialog.showModal();
 });
 settingsCloseBtn.addEventListener('click', () => settingsDialog.close());
@@ -762,6 +774,175 @@ importExtratoInput.addEventListener('change', () => {
   };
   reader.readAsText(file);
 });
+
+// ==============================================
+// Consultor com IA (Anthropic API, chave própria do usuário)
+// ==============================================
+const API_KEY_STORAGE = 'meuFinanceiro.apiKey';
+
+function getApiKey() {
+  return localStorage.getItem(API_KEY_STORAGE) || '';
+}
+
+apiKeySaveBtn.addEventListener('click', () => {
+  const key = apiKeyInput.value.trim();
+  if (!key) return;
+  localStorage.setItem(API_KEY_STORAGE, key);
+  apiKeyInput.value = '';
+  apiKeyStatus.hidden = false;
+  apiKeyStatus.classList.remove('error');
+  apiKeyStatus.textContent = 'Chave salva neste celular.';
+});
+
+apiKeyClearBtn.addEventListener('click', () => {
+  localStorage.removeItem(API_KEY_STORAGE);
+  apiKeyInput.value = '';
+  apiKeyStatus.hidden = false;
+  apiKeyStatus.classList.remove('error');
+  apiKeyStatus.textContent = 'Chave removida.';
+});
+
+function buildResumoParaIA() {
+  const now = new Date();
+  const mesAtual = totaisDoMes(now);
+  const mesAnterior = totaisDoMes(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const gastosPorCategoria = gastosPorCategoriaNoMes(now);
+  const entradasCategoria = Object.entries(gastosPorCategoria).sort((a, b) => b[1] - a[1]);
+
+  const linhas = [];
+  linhas.push(`Saldo atual: ${formatCurrency(computeSaldo())}`);
+  linhas.push('');
+  linhas.push(`Mês atual (${MONTH_NAMES[now.getMonth()]}/${now.getFullYear()}):`);
+  linhas.push(`- Receitas: ${formatCurrency(mesAtual.receitas)}`);
+  linhas.push(`- Despesas: ${formatCurrency(mesAtual.despesas)}`);
+  linhas.push(
+    `Mês anterior: receitas ${formatCurrency(mesAnterior.receitas)}, despesas ${formatCurrency(mesAnterior.despesas)}`
+  );
+  linhas.push('');
+  linhas.push('Despesas do mês atual por categoria:');
+  if (entradasCategoria.length === 0) linhas.push('(nenhuma despesa registrada este mês)');
+  for (const [categoria, valor] of entradasCategoria) {
+    linhas.push(`- ${categoria}: ${formatCurrency(valor)}`);
+  }
+
+  if (data.orcamentos.length > 0) {
+    linhas.push('');
+    linhas.push('Orçamentos mensais definidos:');
+    for (const o of data.orcamentos) {
+      const gasto = gastosPorCategoria[o.categoria] || 0;
+      linhas.push(`- ${o.categoria}: gastou ${formatCurrency(gasto)} de um limite de ${formatCurrency(o.limite)}`);
+    }
+  }
+
+  linhas.push('');
+  linhas.push('Despesas totais dos últimos 6 meses:');
+  for (let i = 5; i >= 0; i--) {
+    const m = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    linhas.push(`- ${MONTH_NAMES[m.getMonth()]}/${m.getFullYear()}: ${formatCurrency(totaisDoMes(m).despesas)}`);
+  }
+
+  return linhas.join('\n');
+}
+
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Renderização mínima e segura de markdown simples (parágrafos, listas com
+// "-", **negrito**) devolvido pela IA: o texto é sempre escapado antes de
+// qualquer tag ser inserida, então não há risco de HTML vindo da resposta.
+function renderAdvisorText(texto) {
+  const container = document.createElement('div');
+  container.className = 'advisor-text';
+
+  const negrito = (s) => escapeHTML(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  for (const bloco of texto.split(/\n{2,}/)) {
+    const linhasBloco = bloco.split('\n').filter((l) => l.trim() !== '');
+    const éLista = linhasBloco.length > 0 && linhasBloco.every((l) => /^[-*•]\s+/.test(l.trim()));
+
+    if (éLista) {
+      const ul = document.createElement('ul');
+      for (const linha of linhasBloco) {
+        const li = document.createElement('li');
+        li.innerHTML = negrito(linha.trim().replace(/^[-*•]\s+/, ''));
+        ul.appendChild(li);
+      }
+      container.appendChild(ul);
+    } else if (bloco.trim()) {
+      const p = document.createElement('p');
+      p.innerHTML = negrito(bloco.trim());
+      container.appendChild(p);
+    }
+  }
+
+  return container;
+}
+
+async function runAdvisor() {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    advisorResult.hidden = false;
+    advisorResult.innerHTML = '<p class="advisor-empty">Configure sua chave da API da Anthropic em Configurações ⚙ para usar o consultor com IA.</p>';
+    return;
+  }
+
+  advisorBtn.disabled = true;
+  advisorBtn.textContent = 'Analisando…';
+  advisorResult.hidden = false;
+  advisorResult.innerHTML = '<p class="advisor-loading">Analisando seus dados…</p>';
+
+  try {
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5',
+        max_tokens: 1024,
+        output_config: { effort: 'medium' },
+        system:
+          'Você é um consultor financeiro pessoal, direto e prático, falando em português do Brasil. ' +
+          'Analise o resumo financeiro do usuário e responda em 2-4 parágrafos ou tópicos curtos com: ' +
+          '1) um diagnóstico rápido do mês; 2) pontos de atenção específicos (orçamentos estourados, ' +
+          'categorias que cresceram); 3) 2-3 sugestões concretas e realistas de economia. Seja objetivo, ' +
+          'sem disclaimers genéricos nem recomendações vagas.',
+        messages: [{ role: 'user', content: buildResumoParaIA() }],
+      }),
+    });
+
+    if (!resposta.ok) {
+      const erro = await resposta.json().catch(() => null);
+      throw new Error(erro?.error?.message || `Erro ${resposta.status}`);
+    }
+
+    const json = await resposta.json();
+    const texto = (json.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+
+    advisorResult.innerHTML = '';
+    advisorResult.appendChild(renderAdvisorText(texto || 'Não foi possível gerar uma análise.'));
+  } catch (err) {
+    const p = document.createElement('p');
+    p.className = 'advisor-error';
+    p.textContent = `Não foi possível consultar a IA: ${err.message || err}`;
+    advisorResult.innerHTML = '';
+    advisorResult.appendChild(p);
+  } finally {
+    advisorBtn.disabled = false;
+    advisorBtn.textContent = '🤖 Analisar com IA';
+  }
+}
+
+advisorBtn.addEventListener('click', runAdvisor);
 
 wipeBtn.addEventListener('click', () => {
   const confirmado = window.confirm(

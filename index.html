@@ -52,17 +52,28 @@
 
 <nav class="tabs" role="tablist" aria-label="Seções">
   <button class="tab active" data-view="extrato" role="tab" aria-selected="true">Extrato</button>
+  <button class="tab" data-view="contas" role="tab" aria-selected="false">Contas</button>
   <button class="tab" data-view="orcamentos" role="tab" aria-selected="false">Orçamentos</button>
   <button class="tab" data-view="relatorio" role="tab" aria-selected="false">Relatório</button>
 </nav>
 
 <main>
   <section id="view-extrato" class="view active">
+    <div id="extrato-conta-filter" class="conta-filter"></div>
     <div id="extrato-empty" class="empty-state" hidden>
       <p>Nenhuma transação ainda.</p>
       <button id="empty-add-btn" class="primary-btn">Adicionar a primeira</button>
     </div>
     <ul id="transacao-list" class="transacao-list"></ul>
+  </section>
+
+  <section id="view-contas" class="view">
+    <div id="contas-empty" class="empty-state" hidden>
+      <p>Nenhuma conta cadastrada.</p>
+      <button id="empty-conta-btn" class="primary-btn">Adicionar conta</button>
+    </div>
+    <ul id="conta-list" class="conta-list"></ul>
+    <button id="add-conta-btn" class="secondary-btn full-width">+ Nova conta</button>
   </section>
 
   <section id="view-orcamentos" class="view">
@@ -87,6 +98,11 @@
       <p>Sem despesas neste mês.</p>
     </div>
     <div id="relatorio-content">
+      <h3 class="section-title">Método Kakeibo — gastos por grupo</h3>
+      <div id="kakeibo-bar" class="kakeibo-bar"></div>
+      <ul id="kakeibo-legend" class="relatorio-legend"></ul>
+
+      <h3 class="section-title">Gastos por categoria</h3>
       <canvas id="relatorio-chart" width="280" height="280"></canvas>
       <ul id="relatorio-legend" class="relatorio-legend"></ul>
     </div>
@@ -108,6 +124,11 @@
       <button type="button" class="tipo-btn" data-value="saida">Despesa</button>
       <button type="button" class="tipo-btn" data-value="entrada">Receita</button>
     </div>
+
+    <label class="field">
+      <span>Conta</span>
+      <select id="transacao-conta" name="contaId" required></select>
+    </label>
 
     <label class="field">
       <span>Valor (R$)</span>
@@ -174,6 +195,57 @@
   </form>
 </dialog>
 
+<dialog id="conta-dialog">
+  <form id="conta-form" method="dialog">
+    <h2 id="conta-dialog-title">Nova conta</h2>
+
+    <label class="field">
+      <span>Nome</span>
+      <input type="text" id="conta-nome" name="nome" required autocomplete="off" placeholder="Ex: Bradesco, Nubank" />
+    </label>
+
+    <label class="field">
+      <span>Tipo</span>
+      <select id="conta-tipo" name="tipo">
+        <option value="conta">Conta corrente / poupança</option>
+        <option value="cartao">Cartão de crédito</option>
+      </select>
+    </label>
+
+    <input type="hidden" id="conta-id" name="id" />
+
+    <div class="dialog-actions">
+      <button type="button" id="conta-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="button" id="conta-delete-btn" class="danger-btn" hidden>Excluir</button>
+      <button type="submit" id="conta-save-btn" class="primary-btn">Salvar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="pagamento-dialog">
+  <form id="pagamento-form" method="dialog">
+    <h2>Registrar pagamento da fatura</h2>
+    <p id="pagamento-cartao-nome" class="settings-hint"></p>
+
+    <label class="field">
+      <span>Valor pago (R$)</span>
+      <input type="number" id="pagamento-valor" name="valor" min="0.01" step="0.01" inputmode="decimal" required />
+    </label>
+
+    <label class="field">
+      <span>Pago com qual conta?</span>
+      <select id="pagamento-conta-origem" name="contaOrigem"></select>
+    </label>
+
+    <input type="hidden" id="pagamento-cartao-id" name="cartaoId" />
+
+    <div class="dialog-actions">
+      <button type="button" id="pagamento-cancel-btn" class="ghost-btn">Cancelar</button>
+      <button type="submit" id="pagamento-save-btn" class="primary-btn">Registrar pagamento</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="settings-dialog">
   <form method="dialog" class="settings-form">
     <h2>Backup e configurações</h2>
@@ -191,10 +263,19 @@
 
     <p class="settings-hint">Importe o extrato baixado do internet banking (.ofx/.qfx) ou uma planilha (.csv) com colunas de data, valor e descrição. As transações entram com a categoria "A categorizar" — edite depois para organizar nos orçamentos.</p>
     <label class="field">
+      <span>Importar para qual conta?</span>
+      <select id="import-extrato-conta" name="contaImportar"></select>
+    </label>
+    <label class="field">
       <span>Importar extrato bancário</span>
       <input type="file" id="import-extrato-input" accept=".ofx,.qfx,.csv,text/csv,application/x-ofx" />
     </label>
     <p id="import-extrato-status" class="import-status" hidden></p>
+
+    <hr class="settings-divider" />
+
+    <p class="settings-hint">Método Kakeibo: agrupe suas categorias em Sobrevivência, Lazer, Cultura ou Extra para ver o resumo por grupo no Relatório.</p>
+    <div id="categoria-grupos-list" class="categoria-grupos-list"></div>
 
     <hr class="settings-divider" />
 

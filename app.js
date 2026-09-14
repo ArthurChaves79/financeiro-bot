@@ -56,6 +56,8 @@ const settingsCloseBtn = document.getElementById('settings-close-btn');
 const exportBtn = document.getElementById('export-btn');
 const importInput = document.getElementById('import-input');
 const importStatus = document.getElementById('import-status');
+const importExtratoInput = document.getElementById('import-extrato-input');
+const importExtratoStatus = document.getElementById('import-extrato-status');
 const wipeBtn = document.getElementById('wipe-btn');
 
 let currentView = 'extrato';
@@ -448,6 +450,8 @@ function renderRelatorio() {
 settingsBtn.addEventListener('click', () => {
   importStatus.hidden = true;
   importInput.value = '';
+  importExtratoStatus.hidden = true;
+  importExtratoInput.value = '';
   settingsDialog.showModal();
 });
 settingsCloseBtn.addEventListener('click', () => settingsDialog.close());
@@ -495,6 +499,209 @@ importInput.addEventListener('change', () => {
     } finally {
       importInput.value = '';
     }
+  };
+  reader.readAsText(file);
+});
+
+// ------------------------------------------------
+// Importar extrato bancário (.ofx/.qfx ou .csv)
+// ------------------------------------------------
+function normalizeText(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function ofxDateToISO(raw) {
+  const m = String(raw || '').match(/^(\d{4})(\d{2})(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+function csvDateToISO(raw) {
+  const s = String(raw || '').trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return null;
+}
+
+function parseLocaleNumber(raw) {
+  let s = String(raw || '').trim();
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  if (hasComma && hasDot) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma && !hasDot) {
+    s = s.replace(',', '.');
+  }
+  return parseFloat(s);
+}
+
+function parseOFX(text) {
+  const blocks = text.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) || [];
+  const field = (block, tag) => {
+    const m = block.match(new RegExp(`<${tag}>([^<\r\n]*)`, 'i'));
+    return m ? m[1].trim() : '';
+  };
+  return blocks
+    .map((block) => {
+      const dataISO = ofxDateToISO(field(block, 'DTPOSTED'));
+      const valor = parseFloat(field(block, 'TRNAMT'));
+      const descricao = field(block, 'MEMO') || field(block, 'NAME');
+      const fitid = field(block, 'FITID') || null;
+      return {
+        data: dataISO,
+        valor: Math.abs(valor),
+        tipo: valor < 0 ? 'saida' : 'entrada',
+        descricao,
+        fitid,
+      };
+    })
+    .filter((t) => t.data && Number.isFinite(t.valor) && t.valor > 0);
+}
+
+function splitCSVLine(line, delimiter) {
+  const result = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === delimiter) {
+      result.push(cur);
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim() !== '');
+  if (lines.length < 2) return [];
+
+  const semiCount = (lines[0].match(/;/g) || []).length;
+  const commaCount = (lines[0].match(/,/g) || []).length;
+  const delimiter = semiCount > commaCount ? ';' : ',';
+
+  const headers = splitCSVLine(lines[0], delimiter).map(normalizeText);
+  const dateIdx = headers.findIndex((h) => ['data', 'date'].includes(h));
+  const valueIdx = headers.findIndex((h) =>
+    ['valor', 'value', 'amount', 'montante'].includes(h)
+  );
+  const descIdx = headers.findIndex((h) =>
+    ['descricao', 'description', 'title', 'memo', 'historico', 'lancamento', 'categoria'].includes(h)
+  );
+  if (dateIdx === -1 || valueIdx === -1) return [];
+
+  return lines
+    .slice(1)
+    .map((line) => splitCSVLine(line, delimiter))
+    .map((cols) => {
+      const dataISO = csvDateToISO(cols[dateIdx]);
+      const valor = parseLocaleNumber(cols[valueIdx]);
+      const descricao = descIdx !== -1 ? String(cols[descIdx] || '').trim() : '';
+      return {
+        data: dataISO,
+        valor: Math.abs(valor),
+        tipo: valor < 0 ? 'saida' : 'entrada',
+        descricao,
+        fitid: null,
+      };
+    })
+    .filter((t) => t.data && Number.isFinite(t.valor) && t.valor > 0);
+}
+
+function showImportExtratoStatus(text, isError) {
+  importExtratoStatus.hidden = false;
+  importExtratoStatus.textContent = text;
+  importExtratoStatus.classList.toggle('error', !!isError);
+}
+
+function transacaoFingerprint(t) {
+  return t.fitid
+    ? `fit:${t.fitid}`
+    : `fp:${t.data}|${t.valor.toFixed(2)}|${t.tipo}|${(t.descricao || '').trim()}`;
+}
+
+importExtratoInput.addEventListener('change', () => {
+  const file = importExtratoInput.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result);
+    const isOFX = /\.(ofx|qfx)$/i.test(file.name) || /<OFX>/i.test(text);
+    const parsed = isOFX ? parseOFX(text) : parseCSV(text);
+
+    if (!parsed.length) {
+      showImportExtratoStatus(
+        'Não foi possível encontrar transações neste arquivo. Verifique se é um .ofx/.qfx do internet banking ou um .csv com colunas de data, valor e descrição.',
+        true
+      );
+      importExtratoInput.value = '';
+      return;
+    }
+
+    const existingFingerprints = new Set(data.transacoes.map(transacaoFingerprint));
+    const seenInBatch = new Set();
+    let added = 0;
+    let skipped = 0;
+
+    for (const t of parsed) {
+      const key = transacaoFingerprint(t);
+      if (existingFingerprints.has(key) || seenInBatch.has(key)) {
+        skipped++;
+        continue;
+      }
+      seenInBatch.add(key);
+      data.transacoes.push({
+        id: crypto.randomUUID(),
+        criadoEm: new Date().toISOString(),
+        tipo: t.tipo,
+        valor: t.valor,
+        categoria: 'A categorizar',
+        descricao: t.descricao || '',
+        data: t.data,
+        fitid: t.fitid || undefined,
+      });
+      added++;
+    }
+
+    saveData(data);
+    render();
+    const addedText =
+      added === 1 ? '1 transação importada.' : `${added} transações importadas.`;
+    const skippedText =
+      skipped === 0
+        ? ''
+        : skipped === 1
+        ? ' 1 já existia e foi ignorada.'
+        : ` ${skipped} já existiam e foram ignoradas.`;
+    showImportExtratoStatus(
+      added > 0
+        ? addedText + skippedText
+        : `Nenhuma transação nova: todas as ${skipped} já tinham sido importadas antes.`,
+      false
+    );
+    importExtratoInput.value = '';
   };
   reader.readAsText(file);
 });

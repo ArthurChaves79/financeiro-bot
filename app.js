@@ -1,11 +1,27 @@
 const STORAGE_KEY = 'meuFinanceiro.dados';
 
-const CHART_COLORS = [
-  '#c9a227', '#3d7a5c', '#7c2d3a', '#2c5c8a',
-  '#8a5a2b', '#5c3a5c', '#3d5c52', '#a4342c',
+// Paleta categórica validada para segurança de daltonismo (mesma ordem fixa
+// nos dois modos, apenas os tons trocam entre claro/escuro).
+const CHART_COLORS_LIGHT = [
+  '#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+  '#e87ba4', '#008300', '#4a3aa7', '#e34948',
 ];
+const CHART_COLORS_DARK = [
+  '#3987e5', '#d95926', '#199e70', '#c98500',
+  '#d55181', '#008300', '#9085e9', '#e66767',
+];
+const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+function currentChartColors() {
+  return darkModeQuery.matches ? CHART_COLORS_DARK : CHART_COLORS_LIGHT;
+}
 
 const balanceValue = document.getElementById('balance-value');
+const balanceDelta = document.getElementById('balance-delta');
+const receitasMesValue = document.getElementById('receitas-mes-value');
+const receitasMesDelta = document.getElementById('receitas-mes-delta');
+const despesasMesValue = document.getElementById('despesas-mes-value');
+const despesasMesDelta = document.getElementById('despesas-mes-delta');
+const trendChart = document.getElementById('trend-chart');
 
 const tabs = document.querySelectorAll('.tab');
 const views = document.querySelectorAll('.view');
@@ -106,11 +122,12 @@ const MONTH_NAMES = [
 ];
 
 function colorFor(categoria) {
+  const colors = currentChartColors();
   let hash = 0;
   for (let i = 0; i < categoria.length; i++) {
     hash = (hash * 31 + categoria.charCodeAt(i)) >>> 0;
   }
-  return CHART_COLORS[hash % CHART_COLORS.length];
+  return colors[hash % colors.length];
 }
 
 function computeSaldo() {
@@ -131,6 +148,32 @@ function gastosPorCategoriaNoMes(monthDate) {
     totals[t.categoria] = (totals[t.categoria] || 0) + t.valor;
   }
   return totals;
+}
+
+function totaisDoMes(monthDate) {
+  const y = monthDate.getFullYear();
+  const m = monthDate.getMonth();
+  let receitas = 0;
+  let despesas = 0;
+  for (const t of data.transacoes) {
+    const d = new Date(`${t.data}T00:00:00`);
+    if (d.getFullYear() !== y || d.getMonth() !== m) continue;
+    if (t.tipo === 'entrada') receitas += t.valor;
+    else despesas += t.valor;
+  }
+  return { receitas, despesas };
+}
+
+function formatSignedCurrency(value) {
+  const sinal = value >= 0 ? '+' : '−';
+  return `${sinal} ${formatCurrency(Math.abs(value))}`;
+}
+
+// Retorna a variação percentual de curr sobre prev, ou null quando não há
+// base de comparação (mês anterior sem nenhum valor).
+function pctChange(curr, prev) {
+  if (prev === 0) return null;
+  return ((curr - prev) / prev) * 100;
 }
 
 // ==============================================
@@ -255,22 +298,31 @@ function renderExtrato() {
     const li = document.createElement('li');
     li.className = 'transacao-card';
 
-    const info = document.createElement('div');
-    info.className = 'transacao-info';
+    const dot = document.createElement('span');
+    dot.className = 'categoria-dot';
+    dot.style.background = colorFor(t.categoria);
+
+    const textos = document.createElement('div');
+    textos.className = 'transacao-textos';
     const cat = document.createElement('div');
     cat.className = 'transacao-categoria';
+    if (t.categoria === 'A categorizar') cat.classList.add('pendente');
     cat.textContent = t.categoria;
-    info.appendChild(cat);
+    textos.appendChild(cat);
     if (t.descricao) {
       const desc = document.createElement('div');
       desc.className = 'transacao-descricao';
       desc.textContent = t.descricao;
-      info.appendChild(desc);
+      textos.appendChild(desc);
     }
     const date = document.createElement('div');
     date.className = 'transacao-data';
     date.textContent = formatDateShort(t.data);
-    info.appendChild(date);
+    textos.appendChild(date);
+
+    const info = document.createElement('div');
+    info.className = 'transacao-info';
+    info.append(dot, textos);
 
     const valor = document.createElement('div');
     valor.className = `transacao-valor ${t.tipo}`;
@@ -358,12 +410,16 @@ function renderOrcamentos() {
 
     const header = document.createElement('div');
     header.className = 'orcamento-header';
+    const dot = document.createElement('span');
+    dot.className = 'categoria-dot';
+    dot.style.background = colorFor(o.categoria);
     const cat = document.createElement('span');
+    cat.className = 'orcamento-nome';
     cat.textContent = o.categoria;
     const valores = document.createElement('span');
     valores.className = `orcamento-valores ${status}`;
     valores.textContent = `${formatCurrency(gasto)} / ${formatCurrency(o.limite)}`;
-    header.append(cat, valores);
+    header.append(dot, cat, valores);
 
     const bar = document.createElement('div');
     bar.className = 'progress-bar';
@@ -392,6 +448,7 @@ nextMonthBtn.addEventListener('click', () => {
 });
 
 function renderRelatorio() {
+  renderTrend();
   monthLabel.textContent = `${MONTH_NAMES[reportMonth.getMonth()]} ${reportMonth.getFullYear()}`;
 
   const totals = gastosPorCategoriaNoMes(reportMonth);
@@ -718,15 +775,98 @@ wipeBtn.addEventListener('click', () => {
 });
 
 // ==============================================
+// Estatísticas (saldo, receitas/despesas do mês e comparação)
+// ==============================================
+function setDeltaText(el, pct, upIsGood) {
+  if (pct === null) {
+    el.textContent = '';
+    el.className = 'stat-delta';
+    return;
+  }
+  if (pct === 0) {
+    el.textContent = 'Igual ao mês passado';
+    el.className = 'stat-delta';
+    return;
+  }
+  const isUp = pct > 0;
+  const isGood = isUp === upIsGood;
+  const arrow = isUp ? '▲' : '▼';
+  el.textContent = `${arrow} ${Math.abs(pct).toFixed(0)}% vs. mês passado`;
+  el.className = `stat-delta ${isGood ? 'up' : 'down'}`;
+}
+
+function renderStats() {
+  const saldo = computeSaldo();
+  balanceValue.textContent = formatCurrency(saldo);
+  balanceValue.classList.toggle('negative', saldo < 0);
+
+  const now = new Date();
+  const mesAtual = totaisDoMes(now);
+  const mesAnterior = totaisDoMes(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const netMes = mesAtual.receitas - mesAtual.despesas;
+
+  balanceDelta.textContent = `${formatSignedCurrency(netMes)} este mês`;
+  balanceDelta.className = `stat-delta${netMes > 0 ? ' up' : netMes < 0 ? ' down' : ''}`;
+
+  receitasMesValue.textContent = formatCurrency(mesAtual.receitas);
+  setDeltaText(receitasMesDelta, pctChange(mesAtual.receitas, mesAnterior.receitas), true);
+
+  despesasMesValue.textContent = formatCurrency(mesAtual.despesas);
+  setDeltaText(despesasMesDelta, pctChange(mesAtual.despesas, mesAnterior.despesas), false);
+}
+
+// ==============================================
+// Tendência: despesas nos últimos 6 meses
+// ==============================================
+function renderTrend() {
+  const now = new Date();
+  const meses = [];
+  for (let i = 5; i >= 0; i--) {
+    meses.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
+  }
+  const totais = meses.map((m) => totaisDoMes(m).despesas);
+  const max = Math.max(...totais, 1);
+
+  trendChart.innerHTML = '';
+  meses.forEach((m, i) => {
+    const despesas = totais[i];
+    const isCurrent = i === meses.length - 1;
+
+    const col = document.createElement('div');
+    col.className = 'trend-col';
+
+    const value = document.createElement('span');
+    value.className = 'trend-value';
+    value.textContent = despesas.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      maximumFractionDigits: 0,
+    });
+
+    const bar = document.createElement('div');
+    bar.className = `trend-bar${isCurrent ? ' current' : ''}`;
+    bar.style.height = `${(despesas / max) * 100}%`;
+
+    const label = document.createElement('span');
+    label.className = 'trend-label';
+    label.textContent = MONTH_NAMES[m.getMonth()].slice(0, 3);
+
+    col.append(value, bar, label);
+    trendChart.appendChild(col);
+  });
+}
+
+// ==============================================
 // Render geral
 // ==============================================
 function render() {
-  balanceValue.textContent = formatCurrency(computeSaldo());
-  balanceValue.classList.toggle('negative', computeSaldo() < 0);
+  renderStats();
   renderExtrato();
   renderOrcamentos();
   renderRelatorio();
 }
+
+darkModeQuery.addEventListener('change', render);
 
 render();
 

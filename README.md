@@ -7,9 +7,9 @@ Substitui o antigo bot de WhatsApp por um app que funciona direto no navegador d
 ## Funcionalidades
 
 - Registrar receitas e despesas com categoria, descrição e data
-- Ver o saldo atual e o extrato agrupado por mês
+- Ver o saldo atual, o extrato agrupado por mês e um resumo de receitas x despesas do mês, com comparação percentual em relação ao mês anterior
 - Definir orçamentos mensais por categoria, com aviso quando o limite é ultrapassado
-- Relatório em gráfico de pizza dos gastos por categoria, navegável por mês
+- Relatório com gráfico de barras da evolução dos gastos nos últimos 6 meses e gráfico de pizza dos gastos por categoria, navegável por mês
 - Funciona offline (Service Worker) e pode ser instalado como app no celular
 - Os dados ficam salvos localmente no navegador (localStorage) — não saem do seu aparelho
 - Backup: exportar todos os dados em um arquivo `.json` e importá-los depois (útil ao trocar de celular ou por segurança)

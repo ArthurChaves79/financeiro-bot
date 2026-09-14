@@ -1,41 +1,51 @@
 :root {
-  --bg: #0b1e19;
-  --surface: #12271f;
-  --surface-2: #1a3329;
-  --text: #eaf2ec;
-  --text-muted: #9fb5a9;
-  --accent: #c9a227;
-  --accent-strong: #a5820f;
-  --accent-ink: #1a1200;
-  --border: #24402f;
-  --danger: #d17a70;
-  --success: #5fae7f;
-  --gold: #c9a227;
-  --coin: #c9a227;
-  --coin-ink: #1a1200;
-  --radius: 12px;
-  --serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Neutral fintech theme — light (default) */
+  --bg: #f9f9f7;
+  --surface: #ffffff;
+  --surface-2: #f0efeb;
+  --text: #0b0b0b;
+  --text-muted: #52514e;
+  --text-faint: #898781;
+  --border: #e1e0d9;
+
+  --accent: #2a78d6;
+  --accent-strong: #184f95;
+  --accent-tint: #e5f0fc;
+  --accent-ink: #ffffff;
+
+  --success: #006300;
+  --danger: #d03b3b;
+  --warning: #fab219;
+  --warning-text: #8a5a00;
+
+  --radius: 14px;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #f4f1e8;
-    --surface: #ffffff;
-    --surface-2: #ece6d3;
-    --text: #1c2620;
-    --text-muted: #5a6b60;
-    --accent: #3d7a5c;
-    --accent-strong: #2c5c44;
-    --accent-ink: #f4f1e8;
-    --border: #d8d0b8;
-    --danger: #a4342c;
-    --success: #2c5c44;
-    --gold: #a5820f;
-    --coin: #c9a227;
-    --coin-ink: #2a1e00;
+    --bg: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #242422;
+    --text: #ffffff;
+    --text-muted: #c3c2b7;
+    --text-faint: #898781;
+    --border: #2c2c2a;
+
+    --accent: #3987e5;
+    --accent-strong: #1c5cab;
+    --accent-tint: rgba(57, 135, 229, 0.18);
+    --accent-ink: #ffffff;
+
+    --success: #0ca30c;
+    --danger: #e66767;
+    --warning: #fab219;
+    --warning-text: #fab219;
   }
 }
+
+/* Categorical palette for categories/charts — validated for CVD-safety,
+   defined here for reference; JS picks the matching array by color-scheme. */
 
 * { box-sizing: border-box; }
 
@@ -53,7 +63,6 @@ html, body {
 body {
   min-height: 100dvh;
   padding-bottom: 6rem;
-  background-image: radial-gradient(ellipse at top, rgba(201, 162, 39, 0.08), transparent 55%);
 }
 
 .topbar {
@@ -77,25 +86,22 @@ body {
 }
 
 .brand-mark {
-  width: 2.1rem;
-  height: 2.1rem;
+  width: 2.3rem;
+  height: 2.3rem;
   flex: none;
 }
 
 .brand-text h1 {
-  font-family: var(--serif);
   font-weight: 700;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   margin: 0;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
 }
 
 .tagline {
   margin: 0;
-  font-family: var(--serif);
-  font-style: italic;
   font-size: 0.72rem;
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 .icon-btn {
@@ -103,42 +109,83 @@ body {
   height: 2.5rem;
   flex: none;
   border-radius: 999px;
-  border: 1px solid var(--gold);
-  background: var(--accent);
+  border: none;
+  background: var(--accent-strong);
   color: var(--accent-ink);
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   line-height: 1;
   cursor: pointer;
 }
 
 .icon-btn:active {
-  background: var(--accent-strong);
+  opacity: 0.85;
 }
 
-.balance-card {
+/* Stat tiles (saldo / receitas / despesas do mês) */
+.stats-grid {
   max-width: 640px;
   margin: 1rem auto 0;
-  padding: 1.1rem 1.25rem;
+  padding: 0 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
 }
 
-.balance-label {
-  font-size: 0.8rem;
+.stat-tile--primary {
+  grid-column: 1 / -1;
+  padding: 1.1rem 1.25rem;
+}
+
+.stat-label {
+  font-size: 0.78rem;
   color: var(--text-muted);
 }
 
-.balance-value {
-  font-family: var(--serif);
-  font-size: 2.4rem;
+.stat-value {
+  font-size: 1.9rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.stat-tile--primary .stat-value {
+  font-size: 2.3rem;
+}
+
+.stat-value.negative {
+  color: var(--danger);
+}
+
+.stat-value--income {
   color: var(--success);
 }
 
-.balance-value.negative {
+.stat-value--expense {
   color: var(--danger);
 }
+
+.stat-tile:not(.stat-tile--primary) .stat-value {
+  font-size: 1.3rem;
+}
+
+.stat-delta {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  min-height: 1.1em;
+}
+
+.stat-delta.up { color: var(--success); }
+.stat-delta.down { color: var(--danger); }
 
 .tabs {
   display: flex;
@@ -146,6 +193,7 @@ body {
   padding: 0.85rem 1.1rem 0.7rem;
   overflow-x: auto;
   border-bottom: 1px solid var(--border);
+  margin-top: 0.3rem;
 }
 
 .tab {
@@ -162,7 +210,7 @@ body {
 }
 
 .tab.active {
-  color: var(--accent);
+  color: var(--accent-strong);
   border-bottom-color: var(--accent);
 }
 
@@ -183,8 +231,6 @@ main {
 .empty-state {
   text-align: center;
   color: var(--text-muted);
-  font-family: var(--serif);
-  font-style: italic;
   margin-top: 3rem;
   display: flex;
   flex-direction: column;
@@ -203,10 +249,9 @@ main {
 }
 
 .month-header {
-  font-family: var(--serif);
   font-weight: 700;
-  color: var(--text-muted);
-  font-size: 0.82rem;
+  color: var(--text-faint);
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin: 0.9rem 0 0.1rem;
@@ -230,21 +275,42 @@ main {
 
 .transacao-info {
   min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
 }
+
+.categoria-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  flex: none;
+  margin-top: 0.35rem;
+}
+
+.transacao-textos { min-width: 0; }
 
 .transacao-categoria {
   font-weight: 600;
-  font-size: 0.98rem;
+  font-size: 0.96rem;
+}
+
+.transacao-categoria.pendente {
+  color: var(--text-faint);
+  font-style: normal;
 }
 
 .transacao-descricao {
   color: var(--text-muted);
   font-size: 0.84rem;
   margin-top: 0.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .transacao-data {
-  color: var(--text-muted);
+  color: var(--text-faint);
   font-size: 0.75rem;
   margin-top: 0.15rem;
 }
@@ -279,18 +345,29 @@ main {
 
 .orcamento-header {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.9rem;
   margin-bottom: 0.5rem;
-  gap: 0.5rem;
+}
+
+.orcamento-header .categoria-dot {
+  margin-top: 0;
+}
+
+.orcamento-nome {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
 }
 
 .orcamento-valores {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
 }
 
-.orcamento-valores.warn { color: var(--accent); }
+.orcamento-valores.warn { color: var(--warning-text); }
 .orcamento-valores.over { color: var(--danger); }
 
 .progress-bar {
@@ -306,7 +383,7 @@ main {
   background: var(--success);
 }
 
-.progress-fill.warn { background: var(--accent); }
+.progress-fill.warn { background: var(--warning); }
 .progress-fill.over { background: var(--danger); }
 
 .full-width {
@@ -315,6 +392,12 @@ main {
 }
 
 /* Relatório */
+.section-title {
+  margin: 1rem 0 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 .month-nav {
   display: flex;
   align-items: center;
@@ -324,10 +407,54 @@ main {
 }
 
 .month-label {
-  font-family: var(--serif);
   font-weight: 700;
   min-width: 9rem;
   text-align: center;
+}
+
+/* Monthly trend (bar chart, last 6 months) */
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  height: 140px;
+  padding: 0 0.2rem;
+}
+
+.trend-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 0.3rem;
+}
+
+.trend-value {
+  font-size: 0.65rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.trend-bar {
+  width: 100%;
+  max-width: 28px;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent-tint);
+  min-height: 3px;
+}
+
+.trend-bar.current {
+  background: var(--accent);
+}
+
+.trend-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 #relatorio-content {
@@ -391,23 +518,22 @@ main {
   height: 3.5rem;
   border-radius: 999px;
   border: none;
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--accent-ink);
   font-size: 1.8rem;
   line-height: 1;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 18px rgba(11, 11, 11, 0.2);
   cursor: pointer;
   z-index: 10;
 }
 
 .fab:active {
-  background: var(--accent-strong);
+  opacity: 0.9;
 }
 
 /* Dialogs */
 dialog {
-  border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 0;
   background: var(--surface);
   color: var(--text);
@@ -416,7 +542,7 @@ dialog {
 }
 
 dialog::backdrop {
-  background: rgba(5, 10, 8, 0.6);
+  background: rgba(11, 11, 11, 0.45);
 }
 
 #transacao-form,
@@ -431,9 +557,8 @@ dialog::backdrop {
 #transacao-form h2,
 #orcamento-form h2,
 .settings-form h2 {
-  font-family: var(--serif);
   margin: 0 0 0.1rem;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
 }
 
 .settings-hint {
@@ -525,15 +650,14 @@ dialog::backdrop {
 }
 
 .primary-btn {
-  background: var(--accent);
+  background: var(--accent-strong);
   color: var(--accent-ink);
-  border: 1px solid var(--gold);
 }
 
 .secondary-btn {
   background: transparent;
-  color: var(--accent);
-  border-color: var(--gold);
+  color: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 
 .ghost-btn {

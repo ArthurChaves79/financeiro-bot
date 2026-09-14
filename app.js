@@ -599,6 +599,7 @@ function csvDateToISO(raw) {
 
 function parseLocaleNumber(raw) {
   let s = String(raw || '').trim();
+  if (!s) return 0;
   const hasComma = s.includes(',');
   const hasDot = s.includes('.');
   if (hasComma && hasDot) {
@@ -606,7 +607,8 @@ function parseLocaleNumber(raw) {
   } else if (hasComma && !hasDot) {
     s = s.replace(',', '.');
   }
-  return parseFloat(s);
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function parseOFX(text) {
@@ -662,40 +664,97 @@ function splitCSVLine(line, delimiter) {
   return result;
 }
 
-function parseCSV(text) {
-  const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim() !== '');
-  if (lines.length < 2) return [];
+// Detecta se uma linha é um cabeçalho de tabela (precisa de coluna de data e
+// de valor — seja uma coluna "valor" única, seja um par crédito/débito) e,
+// se for, devolve o mapeamento de colunas; senão devolve null. Extratos
+// bancários reais costumam ter o cabeçalho fora da primeira linha (título
+// antes) e mais de uma seção/tabela no mesmo arquivo, cada uma com seu
+// próprio cabeçalho — por isso o parser reavalia isso linha a linha.
+function detectCsvHeader(cols) {
+  const norm = cols.map(normalizeText);
+  const dateIdx = norm.findIndex((h) => h === 'data' || h === 'date' || h.startsWith('data '));
+  if (dateIdx === -1) return null;
 
-  const semiCount = (lines[0].match(/;/g) || []).length;
-  const commaCount = (lines[0].match(/,/g) || []).length;
-  const delimiter = semiCount > commaCount ? ';' : ',';
-
-  const headers = splitCSVLine(lines[0], delimiter).map(normalizeText);
-  const dateIdx = headers.findIndex((h) => ['data', 'date'].includes(h));
-  const valueIdx = headers.findIndex((h) =>
-    ['valor', 'value', 'amount', 'montante'].includes(h)
+  const valueIdx = norm.findIndex((h) => ['valor', 'value', 'amount', 'montante'].includes(h));
+  const creditIdx = norm.findIndex(
+    (h) => h.includes('credito') || h.includes('credit') || h.includes('entrada') || h.includes('receita')
   );
-  const descIdx = headers.findIndex((h) =>
+  const debitIdx = norm.findIndex(
+    (h) => h.includes('debito') || h.includes('debit') || h.includes('saida') || h.includes('despesa')
+  );
+  if (valueIdx === -1 && creditIdx === -1 && debitIdx === -1) return null;
+
+  const descIdx = norm.findIndex((h) =>
     ['descricao', 'description', 'title', 'memo', 'historico', 'lancamento', 'categoria'].includes(h)
   );
-  if (dateIdx === -1 || valueIdx === -1) return [];
+  const docIdx = norm.findIndex(
+    (h) => h.includes('docto') || h.includes('documento') || h === 'doc' || h.includes('referencia')
+  );
 
-  return lines
-    .slice(1)
-    .map((line) => splitCSVLine(line, delimiter))
-    .map((cols) => {
-      const dataISO = csvDateToISO(cols[dateIdx]);
-      const valor = parseLocaleNumber(cols[valueIdx]);
-      const descricao = descIdx !== -1 ? String(cols[descIdx] || '').trim() : '';
-      return {
-        data: dataISO,
-        valor: Math.abs(valor),
-        tipo: valor < 0 ? 'saida' : 'entrada',
-        descricao,
-        fitid: null,
-      };
-    })
-    .filter((t) => t.data && Number.isFinite(t.valor) && t.valor > 0);
+  return { dateIdx, valueIdx, creditIdx, debitIdx, descIdx, docIdx };
+}
+
+function parseCSV(text) {
+  // Remove BOM (comum em CSV exportado de internet banking/Excel).
+  const semLinhas = text.replace(/^﻿/, '').split(/\r\n|\n|\r/);
+
+  const semiCount = (text.match(/;/g) || []).length;
+  const commaCount = (text.match(/,/g) || []).length;
+  const delimiter = semiCount > commaCount ? ';' : ',';
+
+  const resultado = [];
+  let mapping = null;
+
+  for (const linha of semLinhas) {
+    if (!linha.trim()) continue;
+    const cols = splitCSVLine(linha, delimiter);
+
+    const possivelCabecalho = detectCsvHeader(cols);
+    if (possivelCabecalho) {
+      mapping = possivelCabecalho;
+      continue;
+    }
+    if (!mapping) continue;
+
+    const dataISO = csvDateToISO(cols[mapping.dateIdx]);
+    if (!dataISO) continue;
+
+    let valor;
+    let tipo;
+    if (mapping.valueIdx !== -1) {
+      const bruto = parseLocaleNumber(cols[mapping.valueIdx]);
+      valor = Math.abs(bruto);
+      tipo = bruto < 0 ? 'saida' : 'entrada';
+    } else {
+      const credito = mapping.creditIdx !== -1 ? parseLocaleNumber(cols[mapping.creditIdx]) : 0;
+      const debito = mapping.debitIdx !== -1 ? parseLocaleNumber(cols[mapping.debitIdx]) : 0;
+      if (credito > 0) {
+        valor = credito;
+        tipo = 'entrada';
+      } else {
+        valor = debito;
+        tipo = 'saida';
+      }
+    }
+    if (!Number.isFinite(valor) || valor <= 0) continue;
+
+    const descricao = mapping.descIdx !== -1 ? String(cols[mapping.descIdx] || '').trim() : '';
+    const doc = mapping.docIdx !== -1 ? String(cols[mapping.docIdx] || '').trim() : '';
+
+    resultado.push({
+      data: dataISO,
+      valor,
+      tipo,
+      descricao,
+      // Combina data + nº do documento: identifica bem a transação mesmo
+      // quando o número em si se repete em datas diferentes, e evita tratar
+      // como duplicatas transações distintas com mesmo valor/descrição no
+      // mesmo dia (ex. duas compras de R$ 4,60 no cartão no mesmo dia).
+      fitid: doc ? `${dataISO}:${doc}` : null,
+    });
+  }
+
+  return resultado;
 }
 
 function showImportExtratoStatus(text, isError) {

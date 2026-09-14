@@ -5,13 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>SIG Condomínios</title>
 <meta name="description" content="Cadastro de condomínios para o Registro de Imóveis" />
-<meta name="theme-color" content="#0b1e19" />
-<link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="icons/icon-192.png" />
-<link rel="apple-touch-icon" href="icons/icon-192.png" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="SIG Condomínios" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -51,7 +45,7 @@
     <div class="detalhe-header">
       <h2 id="detalhe-nome"></h2>
       <div class="detalhe-header-actions">
-        <button id="editar-condominio-btn" class="secondary-btn">Editar dados</button>
+        <button id="editar-condominio-btn" class="icon-btn" aria-label="Editar dados do condomínio" title="Editar dados">✏️</button>
         <button id="excluir-condominio-btn" class="danger-btn">Excluir</button>
       </div>
     </div>
@@ -243,6 +237,13 @@
         <label class="field field-small"><span>Folha</span><input type="text" id="l-inc-folha" autocomplete="off" /></label>
       </div>
       <label class="field"><span>Data</span><input type="date" id="l-inc-data" /></label>
+      <label class="field">
+        <span>Arquivo digitalizado (rede)</span>
+        <div class="campo-caminho">
+          <input type="text" id="l-inc-caminho" autocomplete="off" placeholder="Opcional" />
+          <button type="button" class="escolher-arquivo-btn" data-alvo="l-inc-caminho" title="Escolher arquivo" hidden>📂</button>
+        </div>
+      </label>
     </fieldset>
 
     <fieldset class="subform">
@@ -253,6 +254,13 @@
         <label class="field field-small"><span>Folha</span><input type="text" id="l-esp-folha" autocomplete="off" /></label>
       </div>
       <label class="field"><span>Data</span><input type="date" id="l-esp-data" /></label>
+      <label class="field">
+        <span>Arquivo digitalizado (rede)</span>
+        <div class="campo-caminho">
+          <input type="text" id="l-esp-caminho" autocomplete="off" placeholder="Opcional" />
+          <button type="button" class="escolher-arquivo-btn" data-alvo="l-esp-caminho" title="Escolher arquivo" hidden>📂</button>
+        </div>
+      </label>
     </fieldset>
 
     <fieldset class="subform">
@@ -270,6 +278,13 @@
         </select>
       </label>
       <label class="field"><span>Data</span><input type="date" id="l-conv-data" /></label>
+      <label class="field">
+        <span>Arquivo digitalizado (rede)</span>
+        <div class="campo-caminho">
+          <input type="text" id="l-conv-caminho" autocomplete="off" placeholder="Opcional" />
+          <button type="button" class="escolher-arquivo-btn" data-alvo="l-conv-caminho" title="Escolher arquivo" hidden>📂</button>
+        </div>
+      </label>
     </fieldset>
 
     <div class="dialog-actions">
@@ -310,6 +325,14 @@
     <label class="field">
       <span>Data do documento</span>
       <input type="date" id="d-data" />
+    </label>
+
+    <label class="field">
+      <span>Arquivo digitalizado (rede)</span>
+      <div class="campo-caminho">
+        <input type="text" id="d-caminho" autocomplete="off" placeholder="Opcional" />
+        <button type="button" class="escolher-arquivo-btn" data-alvo="d-caminho" title="Escolher arquivo" hidden>📂</button>
+      </div>
     </label>
 
     <input type="hidden" id="d-id" />
@@ -376,7 +399,10 @@
 <dialog id="settings-dialog">
   <form method="dialog" class="settings-form">
     <h2>Backup e configurações</h2>
-    <p class="settings-hint">Os dados ficam salvos apenas neste dispositivo (localStorage do navegador). Faça backup regularmente.</p>
+    <p id="dados-caminho-texto" class="settings-hint">Carregando informação do arquivo de dados…</p>
+    <p class="settings-hint" style="opacity:.6">Versão do programa: 2026-09-14</p>
+
+    <button type="button" id="reload-btn" class="secondary-btn full-width">🔄 Recarregar dados</button>
 
     <button type="button" id="export-btn" class="primary-btn full-width">Exportar backup (.json)</button>
 

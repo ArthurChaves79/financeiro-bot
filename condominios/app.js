@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'sigCondominios.dados';
 const STORAGE_KEY_LEGADO = 'condominioRI.dados'; // nome usado antes de o app se chamar "SIG Condomínios"
+const STORAGE_KEY_MIGRADO = 'sigCondominios.migradoParaArquivoCompartilhado';
 
 const DOC_TIPOS = {
   auto_vistoria: 'Auto de vistoria',
@@ -13,7 +14,20 @@ const DOC_TIPOS = {
 // ==============================================
 // Persistência
 // ==============================================
-function loadData() {
+// Versão desktop (pywebview): window.pywebview.api existe e os dados
+// ficam num arquivo compartilhado ao lado do .exe (condominios-dados.json),
+// não no localStorage — assim várias pessoas com o mesmo .exe apontando
+// pra mesma pasta de rede veem os mesmos condomínios. Versão navegador
+// comum: continua usando localStorage, como sempre.
+function apiDisponivel() {
+  return !!(window.pywebview && window.pywebview.api);
+}
+
+function removerBOM(texto) {
+  return String(texto ?? '').replace(/^﻿/, '');
+}
+
+function loadDataLocal() {
   try {
     let raw = localStorage.getItem(STORAGE_KEY);
     if (raw === null) {
@@ -27,11 +41,86 @@ function loadData() {
   }
 }
 
-function saveData(d) {
+function saveDataLocal(d) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
 }
 
-let data = loadData();
+function parseDadosCondominios(raw) {
+  const texto = removerBOM(raw);
+  if (!texto || !texto.trim()) return { condominios: [] };
+  try {
+    const parsed = JSON.parse(texto);
+    return { condominios: Array.isArray(parsed && parsed.condominios) ? parsed.condominios : [] };
+  } catch (erro) {
+    console.error('Falha ao interpretar os dados compartilhados:', erro, texto.slice(0, 300));
+    window.alert(
+      'O arquivo de dados existe, mas o conteúdo não pôde ser lido corretamente — pode ter sido interrompido no meio de uma gravação (ex.: queda de rede). O arquivo original NÃO foi apagado nem alterado por este aviso.\n\n' +
+        'Antes de cadastrar algo novo, avise quem cuida do sistema — cadastrar agora sem resolver isso primeiro corre o risco de sobrescrever o arquivo original (com os dados verdadeiros ainda dentro dele) com uma lista vazia.\n\n' +
+        'Detalhe técnico: ' + erro.message
+    );
+    return { condominios: [] };
+  }
+}
+
+async function carregarDadosCompartilhados() {
+  const respostaJson = await window.pywebview.api.carregar_dados();
+  const resposta = JSON.parse(respostaJson);
+  if (resposta.erro) {
+    window.alert(
+      'Não consegui abrir o arquivo de dados compartilhado. Verifique se a pasta de rede está acessível.\n\n' +
+        'Detalhe: ' + (resposta.detalhe || resposta.erro)
+    );
+    return { condominios: [] };
+  }
+  return parseDadosCondominios(resposta.conteudo);
+}
+
+async function migrarLocalStorageSeNecessario(dadosDoArquivo) {
+  if (localStorage.getItem(STORAGE_KEY_MIGRADO)) return dadosDoArquivo;
+  if (dadosDoArquivo.condominios.length > 0) {
+    // arquivo compartilhado já tem dados — não há o que migrar
+    localStorage.setItem(STORAGE_KEY_MIGRADO, '1');
+    return dadosDoArquivo;
+  }
+  const local = loadDataLocal();
+  localStorage.setItem(STORAGE_KEY_MIGRADO, '1');
+  if (local.condominios.length === 0) return dadosDoArquivo;
+  try {
+    await window.pywebview.api.salvar_dados(JSON.stringify(local));
+  } catch (erro) {
+    console.error('Falha ao migrar dados locais para o arquivo compartilhado:', erro);
+    return dadosDoArquivo;
+  }
+  return local;
+}
+
+async function recarregarDados() {
+  if (apiDisponivel()) {
+    let d = await carregarDadosCompartilhados();
+    d = await migrarLocalStorageSeNecessario(d);
+    data = d;
+  } else {
+    data = loadDataLocal();
+  }
+}
+
+function saveData(d) {
+  if (apiDisponivel()) {
+    window.pywebview.api.salvar_dados(JSON.stringify(d)).then((respostaJson) => {
+      const resposta = JSON.parse(respostaJson);
+      if (resposta.erro) {
+        window.alert(
+          'Não consegui salvar no arquivo compartilhado. A alteração pode não ter sido gravada — verifique se a pasta de rede está acessível e tente novamente.\n\n' +
+            'Detalhe: ' + (resposta.detalhe || resposta.erro)
+        );
+      }
+    });
+  } else {
+    saveDataLocal(d);
+  }
+}
+
+let data = { condominios: [] };
 let currentView = 'lista';
 let currentCondoId = null;
 
@@ -52,9 +141,9 @@ function novoCondominio() {
     registro: { tipo: 'matricula', matricula: '', transcricoes: [] },
     pastas: [],
     livros: {
-      incorporacao: { livro: '', numero: '', folha: '', data: '' },
-      especificacao: { livro: '', numero: '', folha: '', data: '' },
-      convencao: { livro: '', numero: '', folha: '', tipo: 'integral', data: '' },
+      incorporacao: { livro: '', numero: '', folha: '', data: '', caminho: '' },
+      especificacao: { livro: '', numero: '', folha: '', data: '', caminho: '' },
+      convencao: { livro: '', numero: '', folha: '', tipo: 'integral', data: '', caminho: '' },
     },
     documentos: [],
     unidades: [],
@@ -149,11 +238,14 @@ const lEspLivro = document.getElementById('l-esp-livro');
 const lEspNumero = document.getElementById('l-esp-numero');
 const lEspFolha = document.getElementById('l-esp-folha');
 const lEspData = document.getElementById('l-esp-data');
+const lIncCaminho = document.getElementById('l-inc-caminho');
+const lEspCaminho = document.getElementById('l-esp-caminho');
 const lConvLivro = document.getElementById('l-conv-livro');
 const lConvNumero = document.getElementById('l-conv-numero');
 const lConvFolha = document.getElementById('l-conv-folha');
 const lConvTipo = document.getElementById('l-conv-tipo');
 const lConvData = document.getElementById('l-conv-data');
+const lConvCaminho = document.getElementById('l-conv-caminho');
 
 // Dialog: documento
 const documentoDialog = document.getElementById('documento-dialog');
@@ -167,6 +259,7 @@ const dDescricao = document.getElementById('d-descricao');
 const dPasta = document.getElementById('d-pasta');
 const pastaOptions = document.getElementById('pasta-options');
 const dData = document.getElementById('d-data');
+const dCaminho = document.getElementById('d-caminho');
 
 // Dialog: unidade
 const unidadeDialog = document.getElementById('unidade-dialog');
@@ -195,6 +288,33 @@ const exportBtn = document.getElementById('export-btn');
 const importInput = document.getElementById('import-input');
 const importStatus = document.getElementById('import-status');
 const wipeBtn = document.getElementById('wipe-btn');
+const dadosCaminhoTexto = document.getElementById('dados-caminho-texto');
+const reloadBtn = document.getElementById('reload-btn');
+
+// ==============================================
+// Botões de escolher arquivo (📂)
+// ==============================================
+function configurarBotoesEscolherArquivo() {
+  const disponivel = apiDisponivel();
+  document.querySelectorAll('.escolher-arquivo-btn').forEach((btn) => {
+    btn.hidden = !disponivel;
+    if (!disponivel) return;
+    btn.addEventListener('click', async () => {
+      const alvoId = btn.dataset.alvo;
+      const input = document.getElementById(alvoId);
+      if (!input) return;
+      try {
+        const respostaJson = await window.pywebview.api.escolher_arquivo_documento();
+        const resposta = JSON.parse(respostaJson);
+        if (resposta.ok && resposta.caminho) {
+          input.value = resposta.caminho;
+        }
+      } catch (erro) {
+        console.error('Falha ao abrir o seletor de arquivo:', erro);
+      }
+    });
+  });
+}
 
 // ==============================================
 // Navegação
@@ -564,7 +684,8 @@ function renderLivrosResumo(condo) {
     },
   ];
 
-  const algum = blocos.some((b) => b.v.livro || b.v.numero || b.v.folha || b.v.data);
+  const temAlgo = (v) => v.livro || v.numero || v.folha || v.data || v.caminho;
+  const algum = blocos.some((b) => temAlgo(b.v));
   if (!algum) {
     const p = document.createElement('p');
     p.className = 'empty-inline';
@@ -574,7 +695,7 @@ function renderLivrosResumo(condo) {
   }
 
   for (const b of blocos) {
-    if (!b.v.livro && !b.v.numero && !b.v.folha && !b.v.data) continue;
+    if (!temAlgo(b.v)) continue;
     const div = document.createElement('div');
     div.className = 'livro-bloco';
 
@@ -595,6 +716,7 @@ function renderLivrosResumo(condo) {
     addRow('Número', b.v.numero);
     addRow('Folha', b.v.folha);
     addRow('Data', formatDateShort(b.v.data));
+    addRow('Arquivo', b.v.caminho);
 
     div.append(titulo, dl);
     livrosResumo.appendChild(div);
@@ -608,15 +730,18 @@ editarLivrosBtn.addEventListener('click', () => {
   lIncNumero.value = l.incorporacao.numero || '';
   lIncFolha.value = l.incorporacao.folha || '';
   lIncData.value = l.incorporacao.data || '';
+  lIncCaminho.value = l.incorporacao.caminho || '';
   lEspLivro.value = l.especificacao.livro || '';
   lEspNumero.value = l.especificacao.numero || '';
   lEspFolha.value = l.especificacao.folha || '';
   lEspData.value = l.especificacao.data || '';
+  lEspCaminho.value = l.especificacao.caminho || '';
   lConvLivro.value = l.convencao.livro || '';
   lConvNumero.value = l.convencao.numero || '';
   lConvFolha.value = l.convencao.folha || '';
   lConvTipo.value = l.convencao.tipo || 'integral';
   lConvData.value = l.convencao.data || '';
+  lConvCaminho.value = l.convencao.caminho || '';
   livrosDialog.showModal();
 });
 
@@ -631,12 +756,14 @@ livrosForm.addEventListener('submit', (event) => {
       numero: lIncNumero.value.trim(),
       folha: lIncFolha.value.trim(),
       data: lIncData.value,
+      caminho: lIncCaminho.value.trim(),
     },
     especificacao: {
       livro: lEspLivro.value.trim(),
       numero: lEspNumero.value.trim(),
       folha: lEspFolha.value.trim(),
       data: lEspData.value,
+      caminho: lEspCaminho.value.trim(),
     },
     convencao: {
       livro: lConvLivro.value.trim(),
@@ -644,6 +771,7 @@ livrosForm.addEventListener('submit', (event) => {
       folha: lConvFolha.value.trim(),
       tipo: lConvTipo.value,
       data: lConvData.value,
+      caminho: lConvCaminho.value.trim(),
     },
   };
   saveData(data);
@@ -677,6 +805,7 @@ function renderDocumentos(condo) {
     if (doc.descricao) subPartes.push(doc.descricao);
     if (doc.pasta) subPartes.push(`Pasta ${doc.pasta}`);
     if (doc.data) subPartes.push(formatDateShort(doc.data));
+    if (doc.caminho) subPartes.push('📎 arquivo');
     if (subPartes.length) {
       const sub = document.createElement('div');
       sub.className = 'registro-item-sub';
@@ -699,6 +828,7 @@ function openDocumentoDialog(doc) {
     dDescricao.value = doc.descricao || '';
     dPasta.value = doc.pasta || '';
     dData.value = doc.data || '';
+    dCaminho.value = doc.caminho || '';
     documentoDeleteBtn.hidden = false;
   } else {
     documentoDialogTitle.textContent = 'Novo documento';
@@ -727,6 +857,7 @@ documentoForm.addEventListener('submit', (event) => {
     descricao: dDescricao.value.trim(),
     pasta: dPasta.value.trim(),
     data: dData.value,
+    caminho: dCaminho.value.trim(),
   };
 
   if (dId.value) {
@@ -1002,12 +1133,33 @@ function todayISO() {
   return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 10);
 }
 
-settingsBtn.addEventListener('click', () => {
+settingsBtn.addEventListener('click', async () => {
   importStatus.hidden = true;
   importInput.value = '';
+  if (apiDisponivel() && dadosCaminhoTexto) {
+    try {
+      const respostaJson = await window.pywebview.api.caminho_dados_atual();
+      const resposta = JSON.parse(respostaJson);
+      dadosCaminhoTexto.textContent = `Arquivo de dados compartilhado: ${resposta.caminho}`;
+    } catch {
+      dadosCaminhoTexto.textContent = 'Não foi possível ler o caminho do arquivo de dados.';
+    }
+  } else if (dadosCaminhoTexto) {
+    dadosCaminhoTexto.textContent = 'Os dados ficam salvos apenas neste dispositivo (localStorage do navegador).';
+  }
   settingsDialog.showModal();
 });
 settingsCloseBtn.addEventListener('click', () => settingsDialog.close());
+
+if (reloadBtn) {
+  reloadBtn.addEventListener('click', async () => {
+    await recarregarDados();
+    currentCondoId = null;
+    showView('lista');
+    renderLista();
+    settingsDialog.close();
+  });
+}
 
 exportBtn.addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1028,7 +1180,7 @@ importInput.addEventListener('change', () => {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const parsed = JSON.parse(String(reader.result));
+      const parsed = JSON.parse(removerBOM(reader.result));
       if (!Array.isArray(parsed.condominios)) {
         throw new Error('formato inválido');
       }
@@ -1074,10 +1226,56 @@ wipeBtn.addEventListener('click', () => {
 // ==============================================
 // Início
 // ==============================================
-renderLista();
+async function iniciar() {
+  configurarBotoesEscolherArquivo();
+  await recarregarDados();
+  renderLista();
+}
 
+let jaIniciou = false;
+function iniciarUmaVez() {
+  if (jaIniciou) return;
+  jaIniciou = true;
+  iniciar();
+}
+
+// Versão desktop carrega o index.html como arquivo local (file://) — só
+// nesse caso existe "pywebviewready" e faz sentido esperar por ele. Mas
+// esse evento dispara só uma vez, e existe uma corrida real com algumas
+// versões do pywebview/WebView2: se ele disparar antes deste script
+// registrar o addEventListener, o listener nunca é chamado, mesmo com a
+// API já pronta pouco depois — e a lista ficaria vazia pra sempre naquela
+// sessão, sem erro nenhum. Por isso, além do evento, tem um polling curto
+// como reforço; iniciarUmaVez() é seguro de chamar mais de uma vez.
+if (location.protocol === 'file:') {
+  if (apiDisponivel()) {
+    iniciarUmaVez();
+  } else {
+    window.addEventListener('pywebviewready', iniciarUmaVez, { once: true });
+    let tentativas = 0;
+    const tentar = setInterval(() => {
+      tentativas++;
+      if (apiDisponivel()) {
+        clearInterval(tentar);
+        iniciarUmaVez();
+      } else if (tentativas > 40) {
+        clearInterval(tentar); // ~10s — desiste do polling, mas o listener continua valendo
+      }
+    }, 250);
+  }
+} else {
+  iniciarUmaVez();
+}
+
+// O app não precisa funcionar isolado no celular (só roda junto com os
+// outros dois programas do SIG, como .exe) — qualquer Service Worker
+// registrado por uma versão antiga é removido ativamente, e nenhum novo
+// é registrado.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  });
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    for (const reg of regs) reg.unregister();
+  }).catch(() => {});
+  if ('caches' in window) {
+    caches.keys().then((keys) => { for (const key of keys) caches.delete(key); }).catch(() => {});
+  }
 }

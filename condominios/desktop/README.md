@@ -57,18 +57,28 @@ PyInstaller em `build.bat`:
 
 ## Onde ficam os dados
 
-Os condomínios cadastrados ficam salvos em:
+Os condomínios cadastrados ficam salvos num único arquivo, sempre ao lado
+do `.exe`:
 
 ```
-%APPDATA%\SIGCondominios
+condominios-dados.json
 ```
 
-(equivalente a `C:\Users\<seu usuário>\AppData\Roaming\SIGCondominios`).
-Esses dados **não são os mesmos** salvos quando o app roda no navegador
-comum (`index.html` aberto via `python -m http.server`) — são
-armazenamentos separados, cada um isolado no seu próprio "navegador".
-Use o botão de backup (⚙ → Exportar backup) para levar os dados de um
-lado para o outro quando precisar.
+Isso é proposital: se o `.exe` (ou um atalho para ele) estiver numa pasta
+de rede compartilhada, todo mundo que abrir esse mesmo `.exe` vê e edita
+os mesmos condomínios — sem precisar escolher arquivo nem configurar
+nada na primeira vez. Não existe mais nenhuma tela de "escolher onde
+salvar": o app sempre usa o arquivo ao lado de onde o `.exe` está
+rodando.
+
+Se antes de existir esse arquivo o programa já tinha sido usado (dados
+salvos no perfil do navegador embutido), na primeira abertura com a nova
+versão esses dados antigos são migrados automaticamente para o
+`condominios-dados.json`.
+
+Use o botão ⚙ → **🔄 Recarregar dados** se outro computador acabou de
+salvar uma alteração e ela ainda não apareceu na sua tela. Use o botão de
+backup (⚙ → Exportar backup) para ter uma cópia de segurança à parte.
 
 ## Atualizando o app
 

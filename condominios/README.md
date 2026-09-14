@@ -1,6 +1,6 @@
 # SIG Condomínios
 
-Aplicativo web (PWA) para cadastro de condomínios voltado ao **Registro de Imóveis** — não a uma administradora de condomínios. Funciona offline, sem servidor, com os dados salvos apenas no navegador do dispositivo (localStorage).
+Aplicativo para cadastro de condomínios voltado ao **Registro de Imóveis** — não a uma administradora de condomínios. Roda como programa desktop (junto com o SIG Editor e o SIG View), sem precisar de servidor nem internet.
 
 Cada condomínio registrado no RI tem suas particularidades (não seguem um padrão fixo), então o cadastro foi pensado para ser flexível: todos os campos de registro (livro, número, folha, data) são opcionais e podem ficar em branco quando não se aplicam a um condomínio específico.
 
@@ -15,12 +15,12 @@ Cada condomínio registrado no RI tem suas particularidades (não seguem um padr
 - **Observações** livres por condomínio.
 - **Busca** por nome, endereço ou número de registro na lista de condomínios.
 - **Gerar HTML do condomínio**: exporta uma página HTML autocontida com o resumo do condomínio (pastas, livros, documentos, unidades) e os dados estruturados em JSON (`<script type="application/json" id="condominio-data">`), pronta para alimentar os lotes que são condomínios no SIG view.
+- **Arquivos digitalizados**: campos de "Arquivo digitalizado (rede)" nos livros e documentos, com botão 📂 para escolher o arquivo direto pelo seletor do Windows (versão desktop).
 - **Backup**: exportar/importar todos os condomínios em um arquivo `.json`.
-- Funciona offline (Service Worker) e pode ser instalado como app no celular.
 
 ## Como usar
 
-Basta abrir `index.html` num navegador (ou hospedar os arquivos estáticos). No celular, use "Adicionar à tela inicial" para instalar como app.
+Este app não precisa funcionar no celular — ele sempre roda como programa desktop, junto com o SIG Editor e o SIG View. Veja `desktop/README.md` para gerar/rodar o `.exe`. (Também é possível abrir `index.html` direto num navegador para testes rápidos, mas nesse modo os dados ficam isolados no navegador daquele computador, sem o arquivo compartilhado em rede.)
 
 ### Rodando localmente
 
@@ -40,10 +40,8 @@ navegador), veja `desktop/README.md`.
 - `index.html` — estrutura da página (lista, detalhe do condomínio, diálogos de cadastro)
 - `styles.css` — estilos
 - `app.js` — lógica do app (condomínios, registro, pastas, livros, documentos, unidades, exportação HTML, backup)
-- `sw.js` — Service Worker (cache offline)
-- `manifest.webmanifest` — metadados de instalação do PWA
 - `icons/` — ícones do app
-- `desktop/` — lançador Python (pywebview) e instruções para gerar o `.exe` Windows
+- `desktop/` — lançador Python (pywebview), API que lê/grava o `condominios-dados.json` compartilhado, e instruções para gerar o `.exe` Windows
 
 ## Modelo de dados
 
@@ -57,11 +55,11 @@ Cada condomínio é salvo como:
   "registro": { "tipo": "matricula|transcricao", "matricula": "", "transcricoes": [] },
   "pastas": [{ "id": "...", "numero": "", "descricao": "" }],
   "livros": {
-    "incorporacao": { "livro": "", "numero": "", "folha": "", "data": "" },
-    "especificacao": { "livro": "", "numero": "", "folha": "", "data": "" },
-    "convencao": { "livro": "", "numero": "", "folha": "", "tipo": "integral|resumo", "data": "" }
+    "incorporacao": { "livro": "", "numero": "", "folha": "", "data": "", "caminho": "" },
+    "especificacao": { "livro": "", "numero": "", "folha": "", "data": "", "caminho": "" },
+    "convencao": { "livro": "", "numero": "", "folha": "", "tipo": "integral|resumo", "data": "", "caminho": "" }
   },
-  "documentos": [{ "id": "...", "tipo": "auto_vistoria|quadro_areas|especificacao|convencao|plantas|outros", "descricao": "", "pasta": "", "data": "" }],
+  "documentos": [{ "id": "...", "tipo": "auto_vistoria|quadro_areas|especificacao|convencao|plantas|outros", "descricao": "", "pasta": "", "data": "", "caminho": "" }],
   "unidades": [{ "id": "...", "numero": "", "registroTipo": "matricula|transcricao", "registro": "", "fracao": "" }],
   "observacoes": ""
 }

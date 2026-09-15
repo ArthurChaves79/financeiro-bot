@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SIG View — São Paulo</title>
+  <link rel="icon" type="image/png" href="static/icon.png" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="static/css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <h1>SIG View</h1>
+      <div id="search-box">
+        <input id="search-input" type="text" placeholder="Buscar endereço, CEP ou bairro..." autocomplete="off" />
+        <ul id="search-results" hidden></ul>
+      </div>
+      <button id="measure-btn" type="button" title="Medir distância no mapa">📏 Medir</button>
+      <button id="neighbors-btn" type="button" title="Clique um lote pra ver quem faz divisa direta com ele">🧭 Confrontantes</button>
+      <button id="export-btn" type="button" title="Salvar o mapa atual como imagem (PNG)">📷 Salvar imagem</button>
+      <button id="print-btn" type="button" title="Abre a impressão do mapa (com título, escala, norte e legenda)">🖨 Imprimir</button>
+      <button id="maintenance-btn" type="button" title="Rodar scripts de manutenção (índice de busca, camadas) sem terminal">🔧 Manutenção</button>
+      <button id="settings-btn" type="button" title="Configurações">⚙ Configurações</button>
+    </header>
+
+    <div id="settings-overlay" hidden>
+      <div id="settings-panel">
+        <h2>Configurações</h2>
+        <p class="hint">Aponte o programa para os recursos da rede local. Salvar recarrega a página.</p>
+
+        <label for="cfg-layers-dir">Pasta de camadas (GeoJSON)</label>
+        <div class="cfg-campo-caminho">
+          <input id="cfg-layers-dir" type="text" placeholder="\\servidor\sigview\layers" />
+          <button type="button" class="cfg-procurar-btn" data-alvo="cfg-layers-dir" data-tipo="pasta" title="Escolher pasta">📂</button>
+        </div>
+
+        <label for="cfg-geocoder-db">Banco de busca (geocoder.db)</label>
+        <div class="cfg-campo-caminho">
+          <input id="cfg-geocoder-db" type="text" placeholder="\\servidor\sigview\geocoder.db" />
+          <button type="button" class="cfg-procurar-btn" data-alvo="cfg-geocoder-db" data-tipo="arquivo" data-filtro="Banco SQLite (*.db)" title="Escolher arquivo">📂</button>
+        </div>
+
+        <label for="cfg-mapa-select">Mapa</label>
+        <select id="cfg-mapa-select"></select>
+        <p class="hint">Coloque um ou mais arquivos <code>.mbtiles</code> na pasta <code>data\maps</code> (do lado do programa) pra eles aparecerem aqui pra escolher — sem precisar digitar caminho.</p>
+
+        <label for="cfg-mbtiles" id="cfg-mbtiles-label" hidden>Caminho do mapa (.mbtiles)</label>
+        <div class="cfg-campo-caminho">
+          <input id="cfg-mbtiles" type="text" placeholder="C:\SIGView\data\mapa.mbtiles" hidden />
+          <button type="button" id="cfg-mbtiles-procurar" class="cfg-procurar-btn" data-alvo="cfg-mbtiles" data-tipo="arquivo" data-filtro="Mapa (*.mbtiles)" title="Escolher arquivo" hidden>📂</button>
+        </div>
+
+        <label for="cfg-tile-url">URL do servidor de mapas (tiles)</label>
+        <input id="cfg-tile-url" type="text" placeholder="/tiles/style.json" />
+        <p class="hint">Deixe <code>/tiles/style.json</code> para usar o mapa embutido (arquivo acima) — só troque se for usar um servidor de tiles externo (ex: TileServer GL).</p>
+
+        <label for="cfg-tile-type">Tipo do mapa</label>
+        <select id="cfg-tile-type">
+          <option value="vector">Vetorial (style.json)</option>
+          <option value="raster">Raster (template XYZ de imagem)</option>
+        </select>
+
+        <label for="cfg-map-style">Estilo de cores do mapa</label>
+        <select id="cfg-map-style"></select>
+        <p class="hint">Só vale pro mapa embutido (vetorial) — usa o mesmo arquivo de mapa, só muda as cores.</p>
+
+        <label for="cfg-versao-check">Verificar versão nova em (opcional)</label>
+        <div class="cfg-campo-caminho">
+          <input id="cfg-versao-check" type="text" placeholder="\\servidor\sigview\versao.txt" />
+          <button type="button" class="cfg-procurar-btn" data-alvo="cfg-versao-check" data-tipo="arquivo" data-filtro="Arquivo de versão (*.txt;*.json)" title="Escolher arquivo">📂</button>
+        </div>
+        <p class="hint">Arquivo numa pasta de rede com o número da versão mais nova disponível (peça pro TI deixar isso pronto). Deixe em branco pra não checar nada.</p>
+
+        <p id="settings-error" class="error" hidden></p>
+
+        <div class="settings-actions">
+          <button id="settings-cancel" type="button">Cancelar</button>
+          <button id="settings-save" type="button" class="primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="maintenance-overlay" hidden>
+      <div id="maintenance-panel">
+        <h2>🔧 Manutenção</h2>
+        <p class="hint">Rode aqui os scripts de manutenção do índice de busca e das camadas, sem precisar abrir um terminal. Os caminhos são os mesmos que você digitaria na linha de comando.</p>
+
+        <label for="maint-tarefa-select">Tarefa</label>
+        <select id="maint-tarefa-select"></select>
+        <p id="maint-tarefa-descricao" class="hint"></p>
+
+        <div id="maint-campos"></div>
+
+        <div id="maint-agendamento">
+          <label class="maint-checkbox-label">
+            <input id="maint-agenda-ativo" type="checkbox" />
+            Repetir automaticamente enquanto o programa estiver aberto
+          </label>
+          <div id="maint-agenda-detalhes" hidden>
+            <label for="maint-agenda-intervalo">A cada (horas)</label>
+            <input id="maint-agenda-intervalo" type="number" min="1" step="1" value="24" />
+            <p id="maint-agenda-info" class="hint"></p>
+          </div>
+          <button id="maint-agenda-salvar" type="button">💾 Salvar agendamento (com os campos acima)</button>
+        </div>
+
+        <p id="maintenance-error" class="error" hidden></p>
+
+        <div id="maintenance-log-wrap" hidden>
+          <label>Andamento</label>
+          <pre id="maintenance-log"></pre>
+          <p id="maintenance-status" class="hint"></p>
+        </div>
+
+        <div class="settings-actions">
+          <button id="maintenance-close" type="button">Fechar</button>
+          <button id="maintenance-run" type="button" class="primary">Rodar</button>
+        </div>
+      </div>
+    </div>
+
+    <aside id="layers-panel">
+      <h2>Camadas</h2>
+      <ul id="layers-list">
+        <li class="empty">Carregando...</li>
+      </ul>
+    </aside>
+
+    <div id="map">
+      <div id="measure-box" hidden>
+        <span id="measure-total">0 m</span>
+        <span id="measure-hint">clique no mapa pra marcar pontos</span>
+        <button id="measure-clear" type="button" title="Limpar medição">Limpar</button>
+      </div>
+      <aside id="feature-panel">
+        <div id="feature-panel-header">
+          <span id="feature-panel-swatch" class="layer-swatch"></span>
+          <h3 id="feature-panel-title"></h3>
+          <button id="feature-panel-close" type="button" aria-label="Fechar" title="Fechar">×</button>
+        </div>
+        <div id="feature-panel-body"></div>
+      </aside>
+
+      <aside id="neighbors-panel">
+        <div id="neighbors-panel-header">
+          <h3>🧭 Confrontantes</h3>
+          <button id="neighbors-panel-close" type="button" aria-label="Fechar" title="Fechar">×</button>
+        </div>
+        <div id="neighbors-panel-controls">
+          <label for="neighbors-raio">Tolerância</label>
+          <input id="neighbors-raio" type="number" min="0" step="0.5" value="1" />
+          <span>m</span>
+          <button id="neighbors-buscar" type="button">Atualizar</button>
+        </div>
+        <p id="neighbors-hint" class="hint">Clique num lote (polígono) pra ver quem faz divisa com ele.</p>
+        <ul id="neighbors-list"></ul>
+        <div id="neighbors-panel-footer">
+          <button id="neighbors-imprimir" type="button" disabled>🖨 Imprimir</button>
+          <button id="neighbors-exportar" type="button" disabled>⬇ Exportar CSV</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Visualizador de imagem embutido (fotos anexadas a um imóvel, ver
+       o campo "Documentos" na barra de detalhes) — abre a imagem
+       dentro do próprio programa, sem depender de qual visualizador
+       está associado a .jpg/.png em cada computador. Ver
+       abrirImagemNoApp() em app.js. -->
+  <div id="image-lightbox" hidden>
+    <button id="image-lightbox-close" type="button" aria-label="Fechar" title="Fechar">×</button>
+    <img id="image-lightbox-img" alt="" />
+  </div>
+
+  <!-- Área usada só na hora de imprimir (ex: lista de Confrontantes) —
+       fica vazia e escondida na tela; o CSS de impressão (style.css)
+       esconde o resto de #app e mostra só isso, pra imprimir uma folha
+       limpa em vez do mapa/app inteiro. Ver imprimirConfrontantes() em
+       app.js. -->
+  <div id="print-area"></div>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="static/js/app.js"></script>
+</body>
+</html>
